@@ -1,0 +1,31 @@
+---
+- name: deploy mediamtx
+  hosts: mediamtx
+#  become: yes
+
+  vars_files:
+  - "/home/dadou/Nextcloud/Didier/python/dadou_utils_ros/ansible/vars/main.yml"
+
+  tasks:
+  - name: Synchronize mediamtx
+    synchronize:
+      src: "{{ local_projects_dir }}/{{ local_project_dir }}/mediamtx/"
+      dest: "mediamtx"
+      recursive: yes
+
+  - name: Copy mediamtx service file
+    become: yes
+    copy:
+      src: "{{ local_projects_dir }}/{{ local_project_dir }}/mediamtx/conf/system/mediamtx.service"
+      dest: "/etc/systemd/system/mediamtx.service"
+      owner: root
+      group: root
+      mode: '0644'
+
+  - name: Activate and start mediamtx service
+    become: yes
+    systemd:
+      name: mediamtx
+      enabled: yes
+      state: started
+      daemon_reload: yes

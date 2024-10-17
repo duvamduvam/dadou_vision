@@ -1,0 +1,138 @@
+{
+    "default" :{
+      "keys": [
+            "B6"
+        ],
+      "loop": true,
+      "duration": 15000,
+      "sequences": [
+        {
+          "duration": 0.4,
+          "method": "rainbow_sparkle"
+        },
+        {
+          "duration": 0.8,
+          "method": "comet",
+          "color": "ORANGE"
+        },
+        {
+          "duration": 1,
+          "method": "chase",
+          "period": 5,
+          "color": "PINK"
+        }
+      ]
+    },
+    "rainbow": {
+      "keys": [
+            "B1"
+        ],
+      "loop": true,
+      "duration": 15000,
+      "sequences": [
+        {
+          "duration": 0.3,
+          "method": "sparkle_pulse",
+          "speed": 5,
+          "color": "AQUA"
+        },
+        {
+          "duration": 0.8,
+          "method": "chase",
+          "period": 5,
+          "color": "PINK"
+        },
+        {
+          "duration": 1,
+          "method": "rainbow",
+          "period": 20,
+          "color": "BLUE"
+        }
+      ]
+    },
+    "love": {
+      "keys": ["B2"],
+          "loop": false,
+          "duration": 20000,
+          "sequences": [
+            {
+              "duration": 0.5,
+              "method": "sparkle",
+              "color": "RED"
+            },
+            {
+              "duration": 1,
+              "method": "pulse",
+              "color": "PINK"
+            }
+          ]
+        },
+    "heidi":{
+      "keys": ["B3"],
+      "loop": false,
+      "duration": 15000,
+      "sequences": [
+        {
+          "duration": 1,
+          "method": "rainbow_chase"
+        }
+      ]
+    },
+    "color comet":{
+      "keys": ["B4"],
+      "loop": false,
+      "duration": 15000,
+      "sequences": [
+        {
+          "duration": 1,
+          "method": "rainbow_comet"
+        }
+      ]
+    },
+    "color sparkle":{
+      "keys": ["B5"],
+      "loop": false,
+      "duration": 15000,
+      "sequences": [
+        {
+          "duration": 1,
+          "method": "rainbow_sparkle"
+        }
+      ]
+    },
+    "colorcycle":{
+      "keys": ["B6"],
+      "loop": false,
+      "duration": 15000,
+      "sequences": [
+        {
+          "duration": 1,
+          "method": "color_cycle"
+        }
+      ]
+    },
+    "purple blink":{
+      "keys": ["B7"],
+      "loop": false,
+      "duration": 15000,
+      "sequences": [
+        {
+          "duration": 1,
+          "method": "blink",
+          "color": "PURPLE"
+        }
+      ]
+    },
+    "off":{
+      "keys": ["B0"],
+      "loop": true,
+      "duration": 15000,
+      "sequences": [
+        {
+          "duration": 1,
+          "method": "blink",
+          "color": "BLACK"
+        }
+      ]
+    }
+}

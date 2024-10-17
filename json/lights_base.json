@@ -1,0 +1,27 @@
+{
+    "love": {
+        "method": "blink",
+        "color": "red",
+        "speed": 100
+    },
+    "chase me": {
+        "color": "green",
+        "speed": 0.01,
+        "period": 75,
+        "max_intensity": 1.0,
+        "min_intensity": 0.0,
+        "method": "rainbow_sparkle"
+    },
+    "sea colorcycle": {
+        "color": "blue",
+        "speed": 9.994,
+        "period": 75,
+        "max_intensity": 1.0,
+        "min_intensity": 0.46,
+        "method": "rainbow_sparkle"
+    },
+    "solido": {
+        "color": "#488348",
+        "method": "solid"
+    }
+}

@@ -1,0 +1,38 @@
+FROM ros:humble-ros-base
+LABEL authors="dadouuu"
+WORKDIR /home
+
+EXPOSE 4421
+
+RUN mkdir /home/ros2_ws
+RUN mkdir /home/ros2_ws/src
+RUN mkdir /home/ros2_ws/src/robot
+RUN mkdir /home/ros2_ws/src/robot/resource
+
+COPY robot/ /home/ros2_ws/src/robot/robot/
+COPY conf/ /home/ros2_ws/src/robot/conf/
+COPY json/ /home/ros2_ws/src/robot/json/
+COPY medias/ /home/ros2_ws/src/robot/medias/
+
+COPY dadou_utils_ros.tar.gz /home/ros2_ws/src/robot/
+RUN tar -xzhf /home/ros2_ws/src/robot/dadou_utils_ros.tar.gz -C /home/ros2_ws/src/robot/ && \
+    rm /home/ros2_ws/src/robot/dadou_utils_ros.tar.gz
+
+COPY conf/ros2_dependencies/ /home/ros2_ws/src/
+
+COPY conf/ros2/setup.py /home/ros2_ws/src/robot/
+COPY conf/ros2/package.xml /home/ros2_ws/src/robot/
+COPY conf/ros2/setup.cfg /home/ros2_ws/src/robot/
+COPY conf/ros2/resource/ /home/ros2_ws/src/robot/resource/
+
+RUN apt-get update && cat /home/ros2_ws/src/robot/conf/packages-docker.txt | xargs apt-get install -y
+
+ENV PYTHONPATH "${PYTHONPATH}:/home/src"
+
+RUN pip3 install -r /home/ros2_ws/src/robot/conf/requirements.txt
+
+ENTRYPOINT ["/bin/bash", "-c", "source /home/ros2_ws/src/robot/conf/scripts/launch-ros-in-docker.sh"]
+
+#COPY robot/test.py .
+#ENTRYPOINT ["python3", "test.py"]
+#CMD ["python3", "src/run.py"]

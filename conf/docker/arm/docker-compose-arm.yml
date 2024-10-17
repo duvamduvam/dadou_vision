@@ -1,0 +1,37 @@
+services:
+  dadou-vision:
+    container_name: dadou-vision-container
+    image: dadouuu/dadou-vision-arm:latest
+    build:
+      context: ../../..
+      dockerfile: conf/docker/arm/Dockerfile-arm
+    #environment:
+      #- DISPLAY=${DISPLAY}
+    #  - ALSA_CARD=0
+    #ports:
+    #  - "80:80"
+    #  - "8000-9000:8000-9000"
+    network_mode: "host"
+
+    volumes:
+      - ../../../vision:/home/ros2_ws/src/vision/vision
+
+      - ../../../conf:/home/ros2_ws/src/vision/conf
+      - ../../../robot:/home/ros2_ws/src/vision/robot
+      - ../../../dadou_utils:/home/ros2_ws/src/vision/dadou_utils
+      - ../../../json:/home/ros2_ws/src/vision/json
+      - ../../../../robot_bringup:/home/ros2_ws/src/robot_bringup
+      - ../../../../robot_interfaces:/home/ros2_ws/src/robot_interfaces
+      - ../../../../../build:/home/ros2_ws/build
+      - ../../../../../install:/home/ros2_ws/install
+      - ../../../../../log:/home/ros2_ws/log
+      - ../../../../../../scripts:/home/scripts
+      - ../../../conf/ros2/setup.py:/home/ros2_ws/src/vision/setup.py
+      - ../../../conf/ros2/package.xml:/home/ros2_ws/src/vision/package.xml
+      - /dev:/dev
+      - /dev/snd:/dev/snd
+    #  - /dev/null:/folder/fileToBeExcluded
+    #accès device ACMO gpio serial by id disque etc ...
+    privileged: true
+ #   devices:
+ #    - /dev

@@ -1,0 +1,28 @@
+services:
+  dadou-robot:
+    container_name: dadou-robot-container
+    image: dadouuu/dadou-robot-x86:latest
+    build:
+      context: ../../..
+      dockerfile: conf/docker/x8664/Dockerfile-x86
+    #environment:
+    #  - DISPLAY=${DISPLAY}
+    network_mode: "host"
+    volumes:
+      - ../../../conf:/home/ros2_ws/src/robot/conf
+      - ../../../robot:/home/ros2_ws/src/robot/robot
+      - ../../../dadou_utils_ros:/home/ros2_ws/src/robot/dadou_utils_ros
+      - ../../../json:/home/ros2_ws/src/robot/json
+      - ../../../medias:/home/ros2_ws/src/robot/medias
+      - ../../../conf/ros2_dependencies/robot_bringup:/home/ros2_ws/src/robot_bringup
+      - ../../../conf/ros2/setup.py:/home/ros2_ws/src/robot/setup.py
+      - ../../../conf/ros2/setup.py:/home/ros2_ws/src/robot/pacakge.xml
+      - /home/dadou/log:/home/ros2_ws/log
+      - /dev:/dev
+    #  - /tmp/.X11-unix:/tmp/.X11-unix
+    #  - /dev/:/dev
+    #  - /dev/null:/folder/fileToBeExcluded
+    #accès device ACMO gpio serial by id disque etc ...
+    privileged: true
+ #   devices:
+ #    - /devœœ

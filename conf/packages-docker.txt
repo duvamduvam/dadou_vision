@@ -1,0 +1,13 @@
+python3-pip
+alsa-utils
+ffmpeg
+python3.11
+libcairo2-dev
+pkg-config
+python3-dev
+libgirepository1.0-dev
+libasound2-dev
+portaudio19-dev
+mpg123
+tzdata
+

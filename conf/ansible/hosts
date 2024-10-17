@@ -1,0 +1,4 @@
+mediamtx:
+  hosts:
+    cloud:
+        local_project_dir: dadou_vision

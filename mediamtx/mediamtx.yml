@@ -1,0 +1,32 @@
+paths:
+  stream:
+    source: publisher
+    #source_protocol: rtsp
+  audio_stream:
+    source: publisher
+
+    #source_protocol: http
+    #source_protocol: webrtc  # Spécifie que le flux provient d'un éditeur WebRTC
+
+  #stream2:
+  #  source: udp://localhost:8005
+    #source_video_port: 8000
+    #source_audio_port: 8001
+
+api: yes
+webrtc: true
+authMethod: internal
+
+authInternalUsers:
+- user: myuser
+  pass: password
+  ips: []
+  permissions:
+  - action: publish
+    path:
+  - action: read
+    path:
+  - action: playback
+    path:
+#ice_servers:
+#  - urls: [stun:stun.l.google.com:19302]

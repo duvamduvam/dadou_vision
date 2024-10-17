@@ -1,0 +1,37 @@
+{
+    "aaaa": {
+        "loop": false,
+        "duration": "0",
+        "keys": "None",
+        "sequences": {
+            "sea colorcycle": "0"
+        }
+    },
+    "default": {
+        "keys": "B6",
+        "loop": true,
+        "duration": "15000",
+        "sequences": {
+            "sea colorcycle": "0",
+            "oulala": "0.2",
+            "sparkle": "0.6",
+            "rainbow_sparkle": "1"
+        }
+    },
+    "heidi": {
+        "keys": "B3",
+        "loop": false,
+        "duration": "999",
+        "sequences": {
+            "rainbow_sparkle": 0.4,
+            "comet2": 0.8,
+            "sparkle10": 1
+        }
+    },
+    "truc": {
+        "loop": false,
+        "duration": "0",
+        "keys": "None",
+        "sequences": {}
+    }
+}

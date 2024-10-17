@@ -1,0 +1,5 @@
+backup sd
+if=/dev/mmcblk0 of=/home/dadou/tmp/rpi.img count=10MB status=progress
+restore
+if=/home/dadou/tmp/rpi.img of=/dev/mmcblk0 count=10MB status=progress
+-> don't work for me use pi imager

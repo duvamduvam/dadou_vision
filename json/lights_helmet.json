@@ -1,0 +1,30 @@
+{
+    "color cycle": {
+        "loop": false,
+        "duration": 2000,
+        "keys": "None",
+        "sequences": {
+            "sea colorcycle": 1
+        }
+    },
+    "default": {
+        "keys": "B6",
+        "loop": true,
+        "duration": 15000,
+        "sequences": {
+            "sea colorcycle": 0,
+            "oulala": 0.2,
+            "sparkle": 0.6,
+            "solido": 1
+        }
+    },
+    "heidi": {
+        "keys": "B3",
+        "loop": false,
+        "duration": 999,
+        "sequences": {
+            "comet2": 0.8,
+            "sparkle10": 1
+        }
+    }
+}

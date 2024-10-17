@@ -1,0 +1,108 @@
+{
+  "colors": [
+    {
+      "name": "AQUA",
+      "color": {
+        "red": "50",
+        "green": "255",
+        "blue": "255"
+      }
+    },
+    {
+      "name": "AMBER",
+      "color": {
+        "red": "255",
+        "green": "100",
+        "blue": "0"
+      }
+    },
+    {
+      "name": "BLACK",
+      "color": {
+        "red": "0",
+        "green": "0",
+        "blue": "0"
+      }
+    },
+    {
+      "name": "BLUE",
+      "color": {
+        "red": "0",
+        "green": "0",
+        "blue": "255"
+      }
+    },
+    {
+      "name": "CYAN",
+      "color": {
+        "red": "0",
+        "green": "255",
+        "blue": "255"
+      }
+    },
+    {
+      "name": "GOLD",
+      "color": {
+        "red": "255",
+        "green": "222",
+        "blue": "30"
+      }
+    },
+    {
+      "name": "GREEN",
+      "color": {
+        "red": "0",
+        "green": "255",
+        "blue": "0"
+      }
+    },
+    {
+      "name": "JADE",
+      "color": {
+        "red": "0",
+        "green": "255",
+        "blue": "40"
+      }
+    },
+    {
+      "name": "MAGENTO",
+      "color": {
+        "red": "255",
+        "green": "0",
+        "blue": "20"
+      }
+    },
+    {
+      "name": "ORANGE",
+      "color": {
+        "red": "255",
+        "green": "40",
+        "blue": "0"
+      }
+    },
+    {
+      "name": "PINK",
+      "color": {
+        "red": "242",
+        "green": "90",
+        "blue": "255"
+      }
+    },
+    {
+      "name": "PURPLE",
+      "color": {
+        "red": "180",
+        "green": "0",
+        "blue": "255"
+      }
+    },
+    {
+      "name": "RED",
+      "color": {
+        "red": "255",
+        "green": "0",
+        "blue": "0"
+      }
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+[Unit]
+Description=mediamtx service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=007
+ExecStart=/home/david/mediamtx/conf/scripts/start-mediamtx.sh
+ExecStop=/home/david/mediamtx/conf/scripts/stop-mediamtx.sh
+Environment="DISPLAY=:0"
+RemainAfterExit=yes
+Restart=always
+RestartSec=3
+TimeoutStopSec=300
+StandardOutput==/home/david/mediamtx/logs/mediamtx.log
+StandardError=/home/david/mediamtx/logs/error.log
+
+[Install]
+WantedBy=multi-user.target

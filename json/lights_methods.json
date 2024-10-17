@@ -1,0 +1,74 @@
+{
+    "blink": [
+      "color",
+      "speed"
+    ],
+    "chase": [
+      "color"
+    ],
+    "colorcycle": [
+      "color",
+      "speed"
+    ],
+    "pulse": [
+      "color",
+      "period",
+      "speed"
+    ],
+    "sparkle": [
+      "color",
+      "speed",
+      "num_sparkles",
+      "mask"
+    ],
+    "sparklepulse": [
+      "color",
+      "max_intensity",
+      "min_intensity",
+      "period",
+      "speed"
+    ],
+    "solid": [
+      "color"
+    ],
+    "rainbow": [
+      "color",
+      "precompute_rainbow",
+      "period",
+      "speed",
+      "step"
+    ],
+    "rainbowchase": [
+      "color",
+      "reverse",
+      "size",
+      "spacing",
+      "speed",
+      "step"
+    ],
+    "rainbowcomet": [
+      "bounce",
+      "colorwheel_offset",
+      "reverse",
+      "ring",
+      "spacing",
+      "speed",
+      "step",
+      "tail_length"
+    ],
+    "rainbowpulse": [
+      "background_brightness",
+      "num_sparkles",
+      "period",
+      "precompute_rainbow",
+      "speed",
+      "step"
+    ],
+    "rainbowsparkle": [
+      "color",
+      "max_intensity",
+      "min_intensity",
+      "period",
+      "speed"
+    ]
+  }
