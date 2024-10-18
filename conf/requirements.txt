@@ -1,12 +1,13 @@
 # pycairo~=1.24.0
 #pycairo libs => sudo apt-get install libcairo2-dev libjpeg-dev libgif-dev
 #pygobject => sudo apt install libgirepository1.0-dev
-Pillow~=10.0.1
-RPi.GPIO~=0.7.1
-adafruit-circuitpython-led-animation~=2.8.0
-adafruit-circuitpython-neopixel~=6.3.11
 adafruit-blinka
 
+SpeechRecognition
+numpy
+requests
+pyaudio
+openai
 pytest
 args~=0.1.0
 #ne foncitonne pas bien quand board est import D.18 not founc
@@ -16,6 +17,7 @@ filetype~=1.2.0
 #gTTS~=2.2.4
 #openai-whisper
 pip>=24.1
+opencv-python
 #pycairo~=1.25.1
 pydub~=0.25.1
 #pygobject~=3.46.0
@@ -23,6 +25,7 @@ pydub~=0.25.1
 #rpi_python_drv8825
 #setuptools version to make ros2 humble work (58.2.0) changed to 70.1.1 the 26/06/2024 still seeams to work
 setuptools==70.1.1
+sqlobject
 #torch~=2.3.0
 #uvloop~=0.17.0
 #watchdog~=3.0.0

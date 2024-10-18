@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="Remote Python 3.11.2 (sftp://pi@stream.local:22/home/pi/.virtualenvs/dadou_vision/bin/python)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="Remote Python 3.11.2 (sftp://pi@stream.local:22/home/pi/.virtualenvs/dadou_vision/bin/python)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.11 (dadou_vision)" project-jdk-type="Python SDK" />
 </project>
