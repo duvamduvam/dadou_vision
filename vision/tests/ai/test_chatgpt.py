@@ -1,11 +1,15 @@
+import json
 import logging
 import logging.config
 import os
 import unittest
 
 from dadou_utils.logging_conf import LoggingConf
-from dadou_utils.utils_static import LOGGING_TEST_FILE_NAME, LOGGING_LAPTOP_TEST_FILE_NAME
-from robot.ai.ai_interactions import AInteractions
+from dadou_utils.utils_static import LOGGING_TEST_FILE_NAME, LOGGING_LAPTOP_TEST_FILE_NAME, ID
+from robot.db.db_manager import DBManager
+from vision.ai.ai_interactions import AInteractions
+from vision.ai.ai_static import AI_INSTRUCTIONS
+from vision.db.chat_db import ChatDB
 
 os.environ['TEST'] = "yes"
 from vision.vision_config import config
@@ -16,15 +20,17 @@ class TestChatgpt(unittest.TestCase):
 
 
     logging.config.dictConfig(LoggingConf.get(config[LOGGING_LAPTOP_TEST_FILE_NAME], "test_chat_gpt"))
-    robot_dialog = AInteractions(None, config)
+    robot_dialog = AInteractions(None)
+    chat_db = ChatDB()
+    db_manager = DBManager()
 
     def test_assistant_listen_speak(self):
-        for i in range(1, 6):
+        for i in range(1, 8):
             logging.info("test")
             self.robot_dialog.process()
 
     def test_chatgpt_models(self):
-        logging.info(self.robot_dialog.check_models())
+        logging.info(json.dumps(self.robot_dialog.check_models(), indent=4))
 
     def test_text_request(self):
         #response = self.robot_dialog.request2("comment vas tu ?")
@@ -33,13 +39,48 @@ class TestChatgpt(unittest.TestCase):
         logging.info(response.text())
         #logging.info(response.choices[0].message.content)
 
-    def test_assistant_speak(self):
-        response = self.robot_dialog.chatgpt_request("est ce que les mouches petent ?")
-        self.robot_dialog.stream_to_speakers(response)
+    def test_summarize(self):
+        entry = ChatDB.get(25)
+        self.robot_dialog.current_history = entry
+        self.robot_dialog.interactions_nb = 10
+        print(json.dumps(entry.get_history(), indent=4))
+        print(print(len(entry.history)))
+        #logging.info(json.dumps(self.robot_dialog.check_models(), indent=4))
+        summarized = self.robot_dialog.summarize_history()
+        summarized = summarized.replace("```json", "")
+        summarized = summarized.replace("```", "")
+        print(summarized)
+        print(len(summarized))
+        #print(summarized)
+    def test_summarize2(self):
+        summarized = '```json\n[\n    {\'role\': \'user\', \'content\': \'salut Didier comment ça va\'}, \n    {\'role\': \'system\', \'con...ne, comparant ce spectacle à un bal lumineux et magique remplissant l\'univers de joie et d\'émerveillement."}\n]\n```'
+        summarized.replace("```json", "")
+        summarized.replace("```", "")
+        print(summarized)
 
-    def test_assistant_speak_robot(self):
-        response = self.robot_dialog.chatgpt_request("pourquoi la tartine tombe toujours du mauvais côté ?")
-        self.robot_dialog.stream_to_speakers(response, robot_effect=True)
+    def test_request(self):
+
+        entry = ChatDB.get(25)
+        question = "pourquoi la tartine tombe toujours du mauvais côté ?"
+
+        self.robot_dialog.current_history = entry
+        self.robot_dialog.current_history.add_user_text(question)
+
+        response = self.robot_dialog.generate_request(AI_INSTRUCTIONS, add_history=True)
+        logging.info(response)
+
+    def test_photo(self):
+
+        entry = ChatDB.get(25)
+        question = "d'écrit la photo ?"
+
+        local_file = '/home/dadou/Nextcloud/Didier/python/dadou_vision/medias/pictures/2024-10-19_00-59-17.jpg'
+
+        self.robot_dialog.current_history = entry
+        self.robot_dialog.current_history.add_user_img(local_file, question)
+
+        response = self.robot_dialog.generate_request(AI_INSTRUCTIONS, add_history=True)
+        logging.info(response)
 
     def test_assistant_listen(self):
         for i in range(1, 11):
@@ -47,17 +88,7 @@ class TestChatgpt(unittest.TestCase):
             question = self.robot_dialog.listen_to_text()
             logging.info(question)
 
-    def test_simple_request_google_audio(self):
-        self.robot_dialog.request_to_audio("c'est l'histoire dans la révolutino francaise en 5 lignes?", "google")
 
-    def test_simple_request_whisper_audio(self):
-        self.robot_dialog.request_to_audio("c'est quoi l'histoire du funk ?")
-
-
-    def test_translate(self):
-        f = open("/home/dadou/tmp/chaco-modif3.txt", "r")
-        logging.info(f.read())
-        self.robot_dialog.translate(f.read())
 
 if __name__ == '__main__':
     unittest.main()

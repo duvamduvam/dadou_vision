@@ -18,6 +18,9 @@ filetype~=1.2.0
 #openai-whisper
 pip>=24.1
 opencv-python
+paramiko
+asyncssh
+pysftp
 #pycairo~=1.25.1
 pydub~=0.25.1
 #pygobject~=3.46.0

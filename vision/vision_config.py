@@ -1,3 +1,4 @@
+import configparser
 import os
 import sys
 
@@ -11,7 +12,7 @@ from dadou_utils.utils_static import BASE_PATH, I2C_ENABLED, JSON_LIGHTS_SEQUENC
     LIGHTS_END_LED, JSON_DIRECTORY, LOGGING_CONFIG_FILE, LOGGING_CONFIG_TEST_FILE, LOGGING_FILE_NAME, BRIGHTNESS, \
     JSON_LIGHTS_BASE, SINGLE_THREAD, SRC_DIRECTORY, PROJECT_DIRECTORY, LIGHTS_LED_COUNT, LOGGING_TEST_FILE_NAME, \
     LOGGING_LAPTOP_TEST_FILE_NAME, CONFIG_DIRECTORY, MEDIAS_DIRECTORY, GPT_MODEL, GPT_VOICE, DB_DIRECTORY, CHAT_DB, \
-    PICTURES_FOLDER
+    PICTURES_FOLDER, MAX_TOKEN
 
 config = {}
 
@@ -23,6 +24,17 @@ config[GPT_MODEL] = "gpt-4o"
 #config[GPT_VOICE] = "alloy"
 config[GPT_VOICE] = "fable"
 config[CHAT_DB] = "chat.db"
+config[MAX_TOKEN] = 70
+WAKE_UP_WORD = "didier"
+
+######## SSH #######
+SSH_HOSTNAME = "cloud.duvam.net"
+SSH_USERNAME = "david"
+
+if Misc.is_raspberrypi():
+    SSH_KEY = '/home/pi/test/conf/kimsufi'
+else:
+    SSH_KEY = '/home/dadou/Nextcloud/divers/keys/kimsufi'
 
 ######### PROCESS ########
 DISK = 'disk'
@@ -59,9 +71,11 @@ config[PROJECT_DIRECTORY] = config[SRC_DIRECTORY] + "robot/"
 if 'unittest' in sys.modules:
     if Misc.is_raspberrypi():
         config[PROJECT_DIRECTORY] = "/home/pi/test/"
+        config[LOGGING_TEST_FILE_NAME] = '/home/pi/test/logs/vision-test.log'
     else:
         config[BASE_PATH] = "/home/dadou/"
         config[PROJECT_DIRECTORY] = config[BASE_PATH]+ "Nextcloud/Didier/python/dadou_vision/"
+        config[LOGGING_TEST_FILE_NAME] = '/home/dadou/tmp/logs/vision-test.log'
 
 config[CONFIG_DIRECTORY] = config[PROJECT_DIRECTORY] + "conf/"
 config[JSON_DIRECTORY] = config[PROJECT_DIRECTORY] + "json/"
@@ -81,8 +95,6 @@ config[LOGGING_CONFIG_FILE] = config[BASE_PATH]+'/conf/logging/logging.conf'
 config[JSON_DIRECTORY] = config[PROJECT_DIRECTORY]+ '/json/'
 config[LOGGING_FILE_NAME] = config[BASE_PATH] + "log/vision.log"
 
-config[LOGGING_TEST_FILE_NAME] = '/home/pi/test/logs/vision-test.log'
-config[LOGGING_LAPTOP_TEST_FILE_NAME] = '/home/dadou/tmp/logs/vision-test.log'
 
 ############### JSON FILES ###############
 
