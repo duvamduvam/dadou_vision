@@ -13,11 +13,31 @@ sqlobject
 # PyAudio.open + player_stream.write)
 pyaudio~=0.2.14
 
-# Capture caméra USB (vision/ai/camera.py). Variante headless : pas de
-# dépendances GUI/Qt superflues sur un Pi 5 sans écran.
-opencv-python-headless
+# Suivi de personne V1 (vision/tracking/detector.py) : ObjectDetector
+# EfficientDet-Lite0 int8, backend retenu par le bench sur le Pi 5 réel
+# (16,7 Hz à ~24% CPU, cf. ARCHITECTURE.md). 0.10.18 = dernière version
+# disponible en wheel aarch64/py3.12 au moment du bench (2026-07-04).
+#
+# PIÈGE (mesuré au bench, cf. detector.py docstring MediaPipeDetector) :
+# mediapipe installe TRANSITIVEMENT opencv-contrib-python (non-headless,
+# nécessite libgl1 — ajouté à conf/packages-docker.txt) et EXIGE numpy<2.
+# On ne liste donc PAS opencv-python-headless ici : avoir les deux variantes
+# d'opencv dans le même conteneur provoque un conflit de FICHIERS à
+# l'installation (les deux paquets installent le même module cv2). Un seul
+# opencv dans le conteneur = celui apporté par mediapipe. vision/ai/camera.py
+# continue de fonctionner à l'identique (même API cv2.VideoCapture/imwrite).
+mediapipe==0.10.18
+
+# Capture caméra USB (vision/ai/camera.py) : PLUS de ligne opencv-python-headless
+# explicite (cf. commentaire mediapipe ci-dessus) — cv2 est fourni
+# transitivement par opencv-contrib-python (dépendance de mediapipe).
 
 # Traitement du signal pour l'effet de voix robotique (resample + tremolo),
 # vision/ai/tts.py — gardé tel quel de la version historique.
-numpy
+# numpy<2 : ÉPINGLÉ explicitement (pas juste laissé au résolveur pip) car
+# mediapipe 0.10.18 downgrade de toute façon numpy vers 1.26.4 — épingler ici
+# rend cette contrainte visible et documentée plutôt que subie silencieusement
+# au moment de l'install de mediapipe. Rien d'autre dans requirements.txt
+# n'exige numpy>=2 (vérifié : openai/sqlobject/pyaudio/scipy s'en accommodent).
+numpy<2
 scipy

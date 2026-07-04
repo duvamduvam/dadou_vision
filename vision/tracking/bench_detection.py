@@ -9,9 +9,14 @@ POURQUOI : ARCHITECTURE.md fixe le critère V1 = /vision/person à 10-15 Hz avec
        spectacle, pas juste une démo de 30 s) ; il faut un chiffre mesuré sur le
        matériel réel, pas une estimation de datasheet.
 
-Ce fichier est l'embryon du futur vision/tracking/detector.py de V1 : chaque
-backend implémente la même interface minimale (Detector.detect(frame) ->
-liste de Detection), pour rester interchangeable une fois le gagnant choisi.
+MISE À JOUR V1 (2026-07-04) : l'interface commune (Detection, Detector),
+MediaPipeDetector (backend GAGNANT retenu pour person_tracker_node) et
+open_camera ont été EXTRAITS vers vision/tracking/detector.py, la source de
+vérité unique désormais utilisée aussi par la production. Ce fichier importe
+ces éléments plutôt que de les dupliquer, et garde SES backends propres au
+bench (MediaPipePoseDetector, OnnxYoloDetector, OpenCVSSDDetector) qui ne
+sont pas retenus en prod mais restent utiles pour re-comparer plus tard
+(ex. si le Hailo AI HAT change la donne). Le bench reste exécutable tel quel.
 
 NE PUBLIE RIEN SUR ROS, NE TOUCHE AUCUN MOTEUR : ce script fait de l'inférence
 pure sur des frames OpenCV. Aucun import rclpy ici, volontairement.
@@ -42,110 +47,22 @@ dépendance requise, l'info est native Linux.
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import json
 import statistics
 import sys
 import time
 from pathlib import Path
 
-
-# --------------------------------------------------------------------------
-# Interface commune (préfigure detector.py de V1)
-# --------------------------------------------------------------------------
-
-@dataclasses.dataclass
-class Detection:
-    """Une boîte détectée, coordonnées en pixels dans l'image d'origine."""
-
-    x1: float
-    y1: float
-    x2: float
-    y2: float
-    score: float
-    label: str
-
-
-class Detector:
-    """Interface commune à tous les backends du bench.
-
-    Volontairement minimaliste : un backend ne fait QUE de la détection sur une
-    frame BGR (format natif OpenCV) et retourne des Detection déjà filtrées sur
-    la catégorie "person" — le filtrage catégorie est laissé à chaque backend
-    car le vocabulaire de classes diffère (COCO 80 classes pour YOLO/MediaPipe,
-    VOC 21 classes pour MobileNet-SSD).
-    """
-
-    name: str = "base"
-
-    def warmup(self, frame) -> None:
-        """Appelé sur les frames de chauffe : certains runtimes (TFLite,
-        onnxruntime) allouent leurs graphes/threads à la première inférence,
-        ce qui fausserait la mesure de latence si on ne les exclut pas."""
-        self.detect(frame)
-
-    def detect(self, frame) -> list[Detection]:
-        raise NotImplementedError
-
-
-# --------------------------------------------------------------------------
-# Backend 1 : MediaPipe ObjectDetector (EfficientDet-Lite0)
-# --------------------------------------------------------------------------
-
-class MediaPipeDetector(Detector):
-    """ObjectDetector MediaPipe, filtré sur la catégorie COCO "person".
-
-    PIÈGE (découvert en bench, 2026-07-04) : `pip3 install mediapipe` DOWNGRADE
-    numpy de 2.x vers 1.26.4 et installe opencv-contrib-python 4.11 EN PLUS de
-    opencv-python-headless déjà présent (conflit de dépendance signalé par pip :
-    "opencv-python-headless 5.0.0.93 requires numpy>=2 ... but you have numpy
-    1.26.4"). Sans conséquence tant que l'install reste éphémère (perdue au
-    restart du conteneur), mais si mediapipe devient une dépendance PERMANENTE
-    de conf/requirements.txt, il faudra vérifier que rien d'autre dans le
-    conteneur (vision_status, ai/interactions.py, etc.) ne dépend de numpy>=2.
-    """
-
-    name = "mediapipe"
-
-    def __init__(self, model_path: str, score_threshold: float = 0.4):
-        # Import différé : ne doit pas être requis pour tester les autres backends.
-        import mediapipe as mp
-        from mediapipe.tasks.python import vision as mp_vision
-
-        self._mp = mp
-        # PIÈGE : BaseOptions vit sous mp.tasks.BaseOptions (pas
-        # mediapipe.tasks.python.core.BaseOptions, qui n'existe pas — le
-        # sous-module s'appelle "base_options", pas la classe elle-même).
-        base_options = mp.tasks.BaseOptions(model_asset_path=model_path)
-        options = mp_vision.ObjectDetectorOptions(
-            base_options=base_options,
-            score_threshold=score_threshold,
-            # IMAGE (pas VIDEO/LIVE_STREAM) : on appelle detect() de façon
-            # synchrone frame par frame, comme les autres backends du bench —
-            # comparaison à mode égal. En prod V1, passer en LIVE_STREAM avec
-            # callback pourrait gagner un peu de latence (à réévaluer alors).
-            running_mode=mp_vision.RunningMode.IMAGE,
-        )
-        self._detector = mp_vision.ObjectDetector.create_from_options(options)
-
-    def detect(self, frame) -> list[Detection]:
-        import cv2
-
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
-        result = self._detector.detect(mp_image)
-        out = []
-        for det in result.detections:
-            cat = det.categories[0]
-            if cat.category_name != "person":
-                continue
-            bb = det.bounding_box
-            out.append(Detection(
-                x1=bb.origin_x, y1=bb.origin_y,
-                x2=bb.origin_x + bb.width, y2=bb.origin_y + bb.height,
-                score=cat.score, label="person",
-            ))
-        return out
+# Interface commune + backend gagnant : extraits vers detector.py (source de
+# vérité unique, utilisée aussi par person_tracker_node en prod). Le bench
+# importe ces éléments plutôt que de les redéfinir (cf. note de mise à jour
+# V1 en tête de fichier).
+from vision.tracking.detector import (  # noqa: F401 (Detection/Detector réexportés pour compat)
+    Detection,
+    Detector,
+    MediaPipeDetector,
+    open_camera,
+)
 
 
 class MediaPipePoseDetector(Detector):
@@ -332,29 +249,8 @@ class OpenCVSSDDetector(Detector):
 
 # --------------------------------------------------------------------------
 # Boucle de mesure : identique pour tous les backends (protocole de la mission)
+# open_camera vient désormais de detector.py (import en tête de fichier).
 # --------------------------------------------------------------------------
-
-def open_camera(device: str, width: int = 640, height: int = 480, fps: int = 30):
-    """Ouvre la webcam en forçant MJPG.
-
-    PIÈGE (confirmé sur cette webcam Jieli) : sans forcer explicitement le
-    FOURCC, OpenCV/V4L2 peut négocier YUYV, qui plafonne le débit USB à
-    ~5-25 fps selon la résolution (vu au v4l2-ctl --list-formats-ext : YUYV
-    640x480 = 25 fps max annoncé, mais en pratique bien pire une fois le CPU
-    sollicité par l'inférence, car YUYV non compressé sature l'USB2). MJPG
-    est le mode natif de cette caméra à 640x480/30fps.
-    """
-    import cv2
-
-    cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-    cap.set(cv2.CAP_PROP_FPS, fps)
-    if not cap.isOpened():
-        raise RuntimeError(f"Impossible d'ouvrir la caméra {device}")
-    return cap
-
 
 def percentile(values: list[float], pct: float) -> float:
     """p50/p95 sans dépendance numpy pour rester lisible (liste déjà petite, 100 val)."""

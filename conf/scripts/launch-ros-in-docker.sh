@@ -18,6 +18,8 @@ fi
 
 source /home/ros2_ws/install/setup.bash
 
-# V0 : heartbeat minimal (démo de fin de lot). Deviendra un launch file
-# (person_tracker_node + chat_node) à partir de V1.
-ros2 run vision vision_status
+# V1 : launch file unique (heartbeat vision_status + suivi de personne
+# person_tracker), cf. conf/ros2/launch/vision.launch.py — remplace le
+# `ros2 run vision vision_status` de V0 (single node). Un seul launch,
+# supervision propre de l'arrêt des deux nodes (SIGINT).
+ros2 launch vision vision.launch.py

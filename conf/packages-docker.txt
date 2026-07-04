@@ -15,5 +15,15 @@ python3-dev
 # Diagnostic caméra USB (v4l2-ctl) — la capture elle-même passe par opencv (pip)
 v4l-utils
 
+# Requis par opencv-contrib-python (non-headless), installé TRANSITIVEMENT
+# par mediapipe (cf. conf/requirements.txt) : sans libgl1, `import cv2` échoue
+# au chargement avec "libGL.so.1: cannot open shared object file" — piège
+# classique de la variante non-headless d'opencv sur un système sans X11/GPU.
+libgl1
+
+# curl : téléchargement du modèle MediaPipe EfficientDet-Lite0 int8 DANS
+# L'IMAGE (Dockerfile-arm), pas au démarrage du node person_tracker.
+curl
+
 # Timezone pour des logs cohérents avec le reste du parc
 tzdata

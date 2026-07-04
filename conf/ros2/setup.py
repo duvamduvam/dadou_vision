@@ -1,3 +1,6 @@
+import os
+from glob import glob
+
 from setuptools import find_packages, setup
 
 package_name = 'vision'
@@ -10,6 +13,10 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        # Launch V1 (vision.launch.py : heartbeat + person_tracker). Le
+        # dossier launch/ est bind-monté/copié à la racine du package colcon
+        # (cf. docker-compose-arm.yml et Dockerfile-arm) depuis conf/ros2/launch/.
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -22,6 +29,8 @@ setup(
         'console_scripts': [
             # Heartbeat V0 : preuve que la chaîne ROS tourne bout-en-bout sur le Pi 5.
             'vision_status = vision.nodes.vision_status_node:main',
+            # Suivi de personne V1 : webcam -> détection -> /vision/person.
+            'person_tracker = vision.nodes.person_tracker_node:main',
         ],
     },
 )

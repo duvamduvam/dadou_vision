@@ -23,6 +23,8 @@ COPY conf/ros2/setup.py /home/ros2_ws/src/vision/
 COPY conf/ros2/package.xml /home/ros2_ws/src/vision/
 COPY conf/ros2/setup.cfg /home/ros2_ws/src/vision/
 COPY conf/ros2/resource/ /home/ros2_ws/src/vision/resource/
+# Launch file V1 (heartbeat + person_tracker) : cf. conf/ros2/launch/vision.launch.py
+COPY conf/ros2/launch/ /home/ros2_ws/src/vision/launch/
 
 # Leçon apt du parc (payée 3 fois sur dadou_robot_ros) : filtrer les
 # commentaires avant xargs (une ligne '#' brute ferait planter apt-get) ;
@@ -31,6 +33,16 @@ RUN apt-get update && sed -E 's/#.*$//' /home/ros2_ws/src/vision/conf/packages-d
 
 RUN ln -fs /usr/share/zoneinfo/Europe/Paris /etc/localtime && \
     dpkg-reconfigure -f noninteractive tzdata
+
+# Modèle MediaPipe EfficientDet-Lite0 int8 (~4,5 Mo), suivi de personne V1
+# (vision/tracking/detector.py) : téléchargé DANS L'IMAGE, pas au démarrage
+# du node person_tracker_node (pas de dépendance réseau au runtime, robot de
+# théâtre = pas toujours connecté). curl -f : échoue le build (pas juste un
+# fichier HTML d'erreur silencieusement enregistré) si l'URL renvoie une
+# erreur HTTP — mieux vaut un build cassé visible qu'un modèle corrompu.
+RUN mkdir -p /home/ros2_ws/models && \
+    curl -fL --retry 3 -o /home/ros2_ws/models/efficientdet_lite0.tflite \
+      https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite
 
 ENV PYTHONPATH "${PYTHONPATH}:/home/ros2_ws"
 

@@ -29,6 +29,11 @@ services:
       - ../../../../../log:/home/ros2_ws/log
       - ../../../conf/ros2/setup.py:/home/ros2_ws/src/vision/setup.py
       - ../../../conf/ros2/package.xml:/home/ros2_ws/src/vision/package.xml
+      # Launch file V1 (vision.launch.py : heartbeat + person_tracker) — même
+      # logique que setup.py/package.xml ci-dessus : bind-mount pour édition
+      # à chaud (sentinelle vision/CHANGE -> colcon build), copié aussi dans
+      # l'image par le Dockerfile pour un premier build sans montage.
+      - ../../../conf/ros2/launch:/home/ros2_ws/src/vision/launch
       - /dev:/dev
       # Audio (TTS, pas encore utilisé par le heartbeat V0, prêt pour V2).
       - /dev/snd:/dev/snd

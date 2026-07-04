@@ -9,6 +9,9 @@
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
+  <!-- Suivi de personne V1 : /vision/person publie des geometry_msgs/PointStamped
+       (contrat ARCHITECTURE.md), cf. vision/nodes/person_tracker_node.py. -->
+  <depend>geometry_msgs</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
