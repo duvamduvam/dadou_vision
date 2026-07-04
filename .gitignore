@@ -2,6 +2,7 @@
 conf/secret
 # Environnements et données locales
 venv/
+.venv/
 db/
 __pycache__/
 *.pyc

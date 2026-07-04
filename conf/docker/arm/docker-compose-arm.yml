@@ -6,39 +6,30 @@ services:
       context: ../../..
       dockerfile: conf/docker/arm/Dockerfile-arm
     environment:
-      #- DISPLAY=${DISPLAY}
       - ALSA_CARD=0
-      - PULSE_SERVER=unix:/run/user/1000/pulse/native
-    #ports:
-    #  - "80:80"
-    #  - "8000-9000:8000-9000"
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-42}
     network_mode: "host"
 
+    # Chemins RELATIFS au fichier compose (pattern du parc, cf. dadou_robot_ros) :
+    # portables PC/Pi quel que soit le point de montage du dépôt. La leçon
+    # « pas de ~ sous sudo » ne concerne que ~, pas les relatifs — compose les
+    # résout par rapport à CE fichier, pas au répertoire d'appel.
     volumes:
-      - ../../../vision:/home/ros2_ws/src/vision/vision
-
       - ../../../conf:/home/ros2_ws/src/vision/conf
-      - ../../../robot:/home/ros2_ws/src/vision/robot
+      - ../../../vision:/home/ros2_ws/src/vision/vision
       - ../../../dadou_utils_ros:/home/ros2_ws/src/vision/dadou_utils_ros
-      - ../../../json:/home/ros2_ws/src/vision/json
-      - ../../../../robot_bringup:/home/ros2_ws/src/robot_bringup
+      - ../../../medias:/home/ros2_ws/src/vision/medias
+      # robot_interfaces (StringTime...) arrive par rsync ansible au niveau
+      # src/, comme sur les autres machines du parc — pas encore utilisé par
+      # le heartbeat V0, prêt pour /face /audio en V2.
       - ../../../../robot_interfaces:/home/ros2_ws/src/robot_interfaces
+      # Workspace colcon partagé entre les dépôts dadou_*_ros (comme robot).
       - ../../../../../build:/home/ros2_ws/build
       - ../../../../../install:/home/ros2_ws/install
       - ../../../../../log:/home/ros2_ws/log
-      - ../../../../../../scripts:/home/scripts
       - ../../../conf/ros2/setup.py:/home/ros2_ws/src/vision/setup.py
       - ../../../conf/ros2/package.xml:/home/ros2_ws/src/vision/package.xml
       - /dev:/dev
+      # Audio (TTS, pas encore utilisé par le heartbeat V0, prêt pour V2).
       - /dev/snd:/dev/snd
-      - /usr/share/alsa/alsa.conf:/usr/share/alsa/alsa.conf
-    #  - /dev/null:/folder/fileToBeExcluded
-    #accès device ACMO gpio serial by id disque etc ...
     privileged: true
- #   devices:
- #   - "/dev/snd:/dev/snd"
- #   cap_add:
- #     - SYS_ADMIN
- #   user: "${UID}:${GID}"
- #   group_add:
- #     - audio

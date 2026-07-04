@@ -1,106 +1,78 @@
-import configparser
+"""Configuration UNIQUE de dadou_vision_ros.
+
+Toutes les valeurs runtime (modèle GPT, voix TTS, chemins de données) et les
+secrets (clé API...) passent par ce module : aucun autre fichier ne doit lire
+`conf/secret` directement ni coder une valeur par défaut en dur.
+
+`conf/secret` est gitignoré (dépôt GitHub PUBLIC) : voir `conf/secret.example`
+pour le format attendu — une ligne `cle=valeur` par secret, commentaires `#`
+et lignes vides ignorés. Le chargement est volontairement paresseux
+(`get_secret` n'est appelé que par les classes qui en ont vraiment besoin,
+au moment de l'usage) pour que les modules purs (parsing, config, db) restent
+importables et testables même sans `conf/secret` sur la machine (CI).
+"""
 import os
-import sys
 
-from dadou_utils_ros.misc import Misc
-from dadou_utils_ros.utils_static import BASE_PATH, I2C_ENABLED, JSON_LIGHTS_SEQUENCE, \
-    JSON_LIGHTS, JSON_COLORS, MAIN_LOOP_SLEEP, STOP_KEY, RIGHT_ARM_NB, LEFT_ARM_NB, WHEEL_RIGHT_DIR, \
-    WHEEL_LEFT_DIR, WHEEL_RIGHT_PWM, WHEEL_LEFT_PWM, HEAD_PWM_NB, STATUS_LED_PIN, RESTART_PIN, SHUTDOWN_PIN, \
-    DIGITAL_CHANNELS_ENABLED, PWM_CHANNELS_ENABLED, LIGHTS_PIN, LIGHTS_START_LED, \
-    LIGHTS_END_LED, JSON_DIRECTORY, LOGGING_CONFIG_FILE, LOGGING_CONFIG_TEST_FILE, LOGGING_FILE_NAME, BRIGHTNESS, \
-    JSON_LIGHTS_BASE, SINGLE_THREAD, SRC_DIRECTORY, PROJECT_DIRECTORY, LIGHTS_LED_COUNT, LOGGING_TEST_FILE_NAME, \
-    LOGGING_LAPTOP_TEST_FILE_NAME, CONFIG_DIRECTORY, MEDIAS_DIRECTORY, GPT_MODEL, GPT_VOICE, DB_DIRECTORY, CHAT_DB, \
-    PICTURES_FOLDER, MAX_TOKEN, LOGGING_FILE, LOGGING_TEST_FILE, ALSA_CHANNEL
+# Racine du dépôt : vision/vision_config.py -> vision/ -> racine.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SECRET_FILE = os.path.join(REPO_ROOT, "conf", "secret")
 
-config = {}
 
-#print(dir(board))
-#board_list = dir(board)
+def load_secrets(path):
+    """Parse un fichier clé=valeur tolérant (commentaires '#', lignes vides).
 
-config[ALSA_CHANNEL] = 1
+    Lève une erreur explicite si le fichier est absent : mieux vaut un crash
+    clair au démarrage (avec le chemin et la marche à suivre) qu'une clé vide
+    qui échoue plus tard, silencieusement, sur un appel réseau.
+    """
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            "Secret manquant : {}\n"
+            "Copiez conf/secret.example vers conf/secret et renseignez vos "
+            "clés (fichier gitignoré, jamais commité — dépôt GitHub public)."
+            .format(path)
+        )
+    secrets = {}
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            secrets[key.strip()] = value.strip()
+    return secrets
 
-######## AI ########
-config[GPT_MODEL] = "gpt-4o"
-config[GPT_VOICE] = "alloy"
-#config[GPT_VOICE] = "fable"
-config[CHAT_DB] = "chat.db"
-config[MAX_TOKEN] = 70
-WAKE_UP_WORD = "didier"
 
-######## SSH #######
-SSH_HOSTNAME = "cloud.duvam.net"
-SSH_USERNAME = "david"
+def get_secret(key):
+    """Retourne un secret par nom depuis conf/secret (erreur claire si absent/vide)."""
+    secrets = load_secrets(SECRET_FILE)
+    if not secrets.get(key):
+        raise KeyError(
+            "Clé '{}' absente ou vide dans {} (voir conf/secret.example)."
+            .format(key, SECRET_FILE)
+        )
+    return secrets[key]
 
-if Misc.is_raspberrypi():
-    SSH_KEY = '/home/pi/test/conf/kimsufi'
-else:
-    SSH_KEY = '/home/dadou/Nextcloud/divers/keys/kimsufi'
-UPLOAD_FOLDER = '/var/www/yellow/media/images/upload/'
-BASE_URL = 'https://admin.duvam.net/yellow/media/images/upload/'
 
-######### PROCESS ########
-DISK = 'disk'
-HELMET = 'helmet'
-SHUTDOWN = 'shutdown'
+# --- Valeurs par défaut saines (aucune donnée sensible ici) --------------
 
-PROCESS_LIST = [DISK, HELMET, SHUTDOWN]
+config = {
+    # Brique GPT (vision/ai/interactions.py)
+    "gpt_model": "gpt-4o",
+    "max_tokens": 70,
+    "wake_up_word": "didier",
 
-########## RPI PINS #########
-#if Misc.is_raspberrypi():
-#    config[LIGHTS_PIN] = board.D18
-#    config[SHUTDOWN_PIN] = board.D12
-#    config[STATUS_LED_PIN] = board.D16
+    # Brique TTS (vision/ai/tts.py)
+    "gpt_voice": "alloy",
+    "alsa_channel": 1,
 
-########## I2C SERVO NUMBER #########
+    # Historique de conversation (vision/db/chat_db.py) — db/ gardé sur
+    # disque (utile V2/streaming) mais gitignoré, jamais commité.
+    "db_directory": os.path.join(REPO_ROOT, "db") + os.sep,
+    "chat_db": "chat.db",
 
-config[HEAD_PWM_NB] = 4
-config[WHEEL_LEFT_PWM] = 1
-config[WHEEL_RIGHT_PWM] = 2
-config[WHEEL_LEFT_DIR] = 0
-config[WHEEL_RIGHT_DIR] = 3
-config[LEFT_ARM_NB] = 8
-config[RIGHT_ARM_NB] = 9
+    # Captures caméra (vision/ai/camera.py)
+    "pictures_folder": os.path.join(REPO_ROOT, "medias", "pictures") + os.sep,
+}
 
-config[STOP_KEY] = "Db"
-config[MAIN_LOOP_SLEEP] = 0.001
-
-config[BASE_PATH] = "/home/ros2_ws/"
-config[BASE_PATH] = config[BASE_PATH].replace('/tests', '')
-config[SRC_DIRECTORY] = config[BASE_PATH] + "src/"
-
-config[PROJECT_DIRECTORY] = config[SRC_DIRECTORY] + "vision/"
-
-if 'unittest' in sys.modules:
-    if Misc.is_raspberrypi():
-        config[PROJECT_DIRECTORY] = "/home/pi/test/"
-        config[LOGGING_TEST_FILE] = '/home/pi/test/logs/vision-test.log'
-    else:
-        config[BASE_PATH] = "/home/dadou/"
-        config[PROJECT_DIRECTORY] = config[BASE_PATH]+ "Nextcloud/dev/didier/python/dadou_vision_ros/"
-        config[LOGGING_TEST_FILE] = '/home/dadou/tmp/logs/vision-test.log'
-
-config[CONFIG_DIRECTORY] = config[PROJECT_DIRECTORY] + "conf/"
-config[JSON_DIRECTORY] = config[PROJECT_DIRECTORY] + "json/"
-config[MEDIAS_DIRECTORY] = config[PROJECT_DIRECTORY] + 'medias/'
-config[PICTURES_FOLDER] = config[MEDIAS_DIRECTORY] + 'pictures/'
-config[DB_DIRECTORY] = config[PROJECT_DIRECTORY] + 'db/'
-
-config[BASE_PATH] = config[BASE_PATH].replace('/tests', '')
-config[SRC_DIRECTORY] = config[BASE_PATH] + "src/"
-
-config[PROJECT_DIRECTORY] = config[SRC_DIRECTORY] + "vision"
-
-config[BASE_PATH] = os.getcwd()
-config[BASE_PATH] = config[BASE_PATH].replace('/tests', '')
-config[LOGGING_CONFIG_TEST_FILE] = config[BASE_PATH]+'/../conf/logging-test.conf'
-config[LOGGING_CONFIG_FILE] = config[BASE_PATH]+'/conf/logging/logging.conf'
-config[JSON_DIRECTORY] = config[PROJECT_DIRECTORY]+ '/json/'
-config[LOGGING_FILE_NAME] = config[BASE_PATH] + '/log/vision.log'
-#config[LOGGING_FILE_NAME] = "/home/ros2_ws/log/vision.log"
-
-############### JSON FILES ###############
-
-config[JSON_COLORS] = 'colors.json'
-config[JSON_LIGHTS_BASE] = 'lights_base.json'
-
-JSON_HELMET = 'lights_helmet.json'
+WAKE_UP_WORD = config["wake_up_word"]

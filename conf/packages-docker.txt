@@ -1,15 +1,19 @@
+# Paquets apt du conteneur — minimal, chaque ligne justifiée (filtrés par
+# `sed -E 's/#.*$//' | xargs -r apt-get install -y`, cf. Dockerfile-arm).
+
+# Outils pip dans le conteneur
 python3-pip
+
+# Audio : lecture TTS (vision/ai/tts.py, PyAudio) + diagnostic ALSA (aplay/arecord)
 alsa-utils
-ffmpeg
-python3.11
-python3-pyaudio
-libcairo2-dev
-pkg-config
-python3-dev
-python3-opencv
-libgirepository1.0-dev
 libasound2-dev
 portaudio19-dev
-mpg123
-tzdata
 
+# Build helper requis pour compiler le binding C de PyAudio contre portaudio
+python3-dev
+
+# Diagnostic caméra USB (v4l2-ctl) — la capture elle-même passe par opencv (pip)
+v4l-utils
+
+# Timezone pour des logs cohérents avec le reste du parc
+tzdata

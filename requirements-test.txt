@@ -1,0 +1,6 @@
+pytest
+# Nécessaire pour importer vision.db.chat_db (test_chat_db.py) — pas d'autre
+# dépendance lourde : vision_config.py et vision.ai.emotion_parser sont
+# volontairement stdlib-only pour rester testables sans conf/secret ni
+# openai/opencv/pyaudio installés.
+sqlobject

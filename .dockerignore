@@ -1,0 +1,17 @@
+# À LA RACINE du dépôt car c'est la racine du contexte de build
+# (docker-compose-arm.yml : context ../../..). Les anciens .dockerignore de
+# conf/docker/ n'étaient JAMAIS lus par Docker (mauvais emplacement) — piège
+# hérité, corrigé à la refonte V0.
+
+# CRITIQUE (dépôt et image publics) : le Dockerfile fait COPY conf/ — sans
+# cette exclusion, la clé OpenAI partirait dans l'image dadouuu/dadou-vision-arm.
+conf/secret
+
+.git
+.gitignore
+.idea
+.venv
+venv
+db
+__pycache__
+*.pyc

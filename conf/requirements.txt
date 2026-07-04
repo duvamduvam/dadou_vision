@@ -1,40 +1,23 @@
-# pycairo~=1.24.0
-#pycairo libs => sudo apt-get install libcairo2-dev libjpeg-dev libgif-dev
-#pygobject => sudo apt install libgirepository1.0-dev
-adafruit-blinka
+# Requirements MINIMAL — chaque ligne justifiée (V0 socle sain, cf. ARCHITECTURE.md).
+# Rien d'autre ne doit être ajouté sans raison documentée ici.
 
-SpeechRecognition
-numpy
-requests
-pyaudio~=0.2.14
-openai
-pytest
-args~=0.1.0
-#ne foncitonne pas bien quand board est import D.18 not founc
-#board~=1.0
-colorlog~=6.7.0
-filetype~=1.2.0
-flac
-#gTTS~=2.2.4
-#openai-whisper
-pip>=24.1
-opencv-python
-paramiko
-asyncssh
-pysftp
-#pycairo~=1.25.1
-pydub~=0.25.1
-#pygobject~=3.46.0
-#pyttsx3~=2.90
-#rpi_python_drv8825
-#setuptools version to make ros2 humble work (58.2.0) changed to 70.1.1 the 26/06/2024 still seeams to work
-setuptools==70.1.1
-#setuptools==78.1.0
+# Client officiel OpenAI : GPT-4o (vision/ai/interactions.py) et TTS
+# streaming (vision/ai/tts.py). Version récente pour l'API Chat Completions
+# et le client audio streaming actuels.
+openai>=1.50.0
+
+# Historique de conversation persistant en SQLite (vision/db/chat_db.py)
 sqlobject
-scipy~=1.15.2
-#torch~=2.3.0
-#uvloop~=0.17.0
-#watchdog~=3.0.0
-#websockets~=11.0.2
-#websocket~=0.2.1
-#whisper~=1.1.10
+
+# Lecture de la réponse TTS sur la sortie audio ALSA (vision/ai/tts.py,
+# PyAudio.open + player_stream.write)
+pyaudio~=0.2.14
+
+# Capture caméra USB (vision/ai/camera.py). Variante headless : pas de
+# dépendances GUI/Qt superflues sur un Pi 5 sans écran.
+opencv-python-headless
+
+# Traitement du signal pour l'effet de voix robotique (resample + tremolo),
+# vision/ai/tts.py — gardé tel quel de la version historique.
+numpy
+scipy

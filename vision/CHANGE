@@ -1,0 +1,4 @@
+Sentinelle de build : sa présence déclenche un `colcon build` au démarrage du
+conteneur (cf. conf/scripts/launch-ros-in-docker.sh), puis le fichier est
+supprimé. Recréez-le (touch vision/CHANGE) après une modification du code
+pour forcer un rebuild.

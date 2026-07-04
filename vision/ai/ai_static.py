@@ -1,28 +1,30 @@
-import configparser
-import logging
+"""Prompts et constantes de la brique conversationnelle GPT (recyclée en V0).
 
-from dadou_utils_ros.utils_static import CONFIG_DIRECTORY
-from vision.vision_config import config
+Contenu purement textuel : aucun secret, aucun accès réseau, aucun import
+lourd. Le chargement de la clé API vit dans vision_config.get_secret, appelé
+au moment de l'usage réel (constructeurs de AInteractions/AIAudio) — pas ici,
+pour que ce module (et donc vision.ai.emotion_parser/interactions) reste
+importable et testable même sans conf/secret sur la machine (CI).
+"""
 
-config_parser = configparser.ConfigParser()
-logging.info(config[CONFIG_DIRECTORY] + 'secret')
-config_parser.read(config[CONFIG_DIRECTORY] + 'secret')
-
-CHAT_GPT_KEY = config_parser['DEFAULT']['chatgpt_key']
-
+# Instructions système envoyées à GPT à chaque requête (vision/ai/interactions.py).
+# Durci à la refonte V0 : demande explicitement un objet JSON VALIDE (guillemets
+# doubles) en fin de réponse, pour que vision.ai.emotion_parser puisse le
+# parser avec json.loads (l'ancien prompt demandait des guillemets simples,
+# qui forçaient à utiliser ast.literal_eval — dangereux, cf. emotion_parser.py).
 AI_INSTRUCTIONS = """
-                Tu es un robot destiné au théâtre, ton rôle est d'amuser les gens dans la rue, ton nom est Didier.
-                Tu dois exprimer des émotions autant que possible, tu ne dois pas évoquer que t'on role est d'animer les gens dans la rue.
-                Pour que tes messages soient interprétés par le système pour générer des mouvements, tu dois également intégrer un JSON avec le format suivant :
-                {'emotion': 'value'}
-                Émotions possibles : ['anger', 'disgust', 'happy', 'surprise', 'neutral']
-                Écris ce retour JSON à la fin et n'en fais pas mention dans ton message.
-                Tu dois également essayer de connaitre le nom de ton interlocuteur, quand ton interlocuteur communiquer son nom tu dois l'affichier de la manière suivante 
-                {'name':'Stéphanie'} ou {'name':'Stéphanie', 'emotion': 'anger'} si une émotion est passé.
-                Si tu recois par exemple {'name':'Stéphanie'} il n'est plus nécessaire de demander le prénom
-                Tu dois aussi demander des photos pour comprendre le contexte, quand nécessaire, il ne faux jamais évoquer le fait que tu utilise une photo au cours de l'interaction.
-                Pour demander une photo ajoute ceci au retour json { .. 'photo':'true' ...}
-                """
+Tu es un robot destiné au théâtre, ton rôle est d'amuser les gens dans la rue, ton nom est Didier.
+Tu dois exprimer des émotions autant que possible, tu ne dois pas évoquer que ton rôle est d'animer les gens dans la rue.
+Pour que tes messages soient interprétés par le système afin de générer des mouvements, tu dois intégrer un objet JSON VALIDE (guillemets doubles, comme en JSON standard) à la toute fin de ta réponse, au format :
+{"emotion": "valeur"}
+Émotions possibles : ["anger", "disgust", "happy", "surprise", "neutral"]
+N'évoque jamais ce JSON dans ton message parlé.
+Tu dois également essayer de connaître le nom de ton interlocuteur : quand il te le communique, ajoute-le au JSON de fin, par exemple {"name": "Stephanie"} ou {"name": "Stephanie", "emotion": "anger"}. Si on t'a déjà donné un nom, il n'est plus nécessaire de le redemander.
+Tu dois aussi demander des photos pour comprendre le contexte quand c'est nécessaire, sans jamais évoquer que tu utilises une photo au cours de l'interaction. Pour demander une photo, ajoute "photo": "true" au JSON de fin.
+"""
+
+# Réponse de modération factice utilisée au démarrage pour vérifier que la clé
+# API est valide (self-check, pas de contenu utilisateur réel ici).
 AI_MODERATION = """{
             "id": "modr-XXXXX",
             "model": "text-moderation-007",

@@ -1,0 +1,27 @@
+name: tests
+
+on: [push, pull_request]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: dadou_vision_ros
+
+      # La lib partagée est résolue via le symlink dadou_utils_ros -> ../dadou_utils_ros,
+      # on la clone donc en dossier frère, comme sur les machines de dev.
+      - uses: actions/checkout@v4
+        with:
+          repository: duvamduvam/dadou_utils_ros
+          path: dadou_utils_ros
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r dadou_vision_ros/requirements-test.txt
+
+      - run: python -m pytest
+        working-directory: dadou_vision_ros
