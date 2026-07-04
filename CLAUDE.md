@@ -18,9 +18,17 @@ Cerveau perceptif du robot de théâtre Didier, sur Pi 5 « vision » (alias ssh
   apt avec `sed 's/#.*$//' | xargs -r`, PAS de `pip install --upgrade pip`,
   `ENV PIP_BREAK_SYSTEM_PACKAGES=1`, sentinelle de build dans un dossier bind-mounté.
 
-## État (2026-07-04)
+## État (2026-07-04 soir — V0 et V1 FAITS)
 
-- Pi 5 provisionnable, webcam USB validée, pas de micro.
-- Briques à recycler : `vision/ai/ai_interactions.py` (GPT-4o), `ai_audio.py` (TTS),
-  `vision/db/chat_db.py`. Le reste : voir verdicts dans ARCHITECTURE.md.
-- Lots : V0 socle sain → V1 suivi de personne (/vision/person) → V2 parole/émotions.
+- **V0 déployé** : Pi 5 provisionné (install-pios-lite, service systemd `vision`
+  autostart), image Jazzy buildée sur le Pi, heartbeat /vision/status.
+- **V1 déployé et validé personne réelle** : person_tracker → /vision/person
+  (~16 Hz, silence=perdu), MediaPipe EfficientDet-Lite0 (bench a22ca8b :
+  16,7 Hz à 24 % CPU ; la webcam plafonne à 16,7 fps). Robuste en basse lumière.
+  Consommateur côté robot : gaze_follower (dadou_robot_ros 55676b6, validé sim,
+  reste le protocole caméra : direction_sign/amplitude/StringTime réel).
+- Pièges consignés dans les commits/le code : logger rclpy ≠ logging stdlib
+  (f-strings), purger build/ après changement numpy, mediapipe impose numpy<2
+  + opencv-contrib (un seul opencv, libgl1 requis).
+- Prochains lots : V2 parole/émotions (micro à ACHETER d'abord ; briques
+  ai/interactions+tts+chat_db prêtes) → V3 personnage autonome (ARCHITECTURE.md).
