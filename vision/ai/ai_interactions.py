@@ -10,7 +10,7 @@ import requests
 from openai import OpenAI
 import speech_recognition as sr
 
-from dadou_utils.utils_static import CONFIG_DIRECTORY, GPT_MODEL, NAME, MAX_TOKEN, PHOTO
+from dadou_utils_ros.utils_static import CONFIG_DIRECTORY, GPT_MODEL, NAME, MAX_TOKEN, PHOTO
 from vision.ai.ai_audio import AIAudio
 from vision.ai.ai_static import AI_MODERATION, AI_INSTRUCTIONS, CHAT_GPT_KEY
 from vision.db.chat_db import ChatDB
@@ -28,11 +28,12 @@ class AInteractions:
         self.disabled = True
         self.blank_question_count = 0
 
+        self.chatgpt_key = CHAT_GPT_KEY
         openai.api_key = CHAT_GPT_KEY
         self.assistant = OpenAI(api_key=CHAT_GPT_KEY)
         self.assistant.moderations.create(input=AI_MODERATION)
 
-        self.current_history = None
+        self.current_history = ChatDB.create({})
 
         self.interactions_nb = 0
         self.parameters = None
@@ -40,6 +41,8 @@ class AInteractions:
 
         self.camera_manager = AICamera()
         self.ai_audio = AIAudio()
+
+        self.chat_db = ChatDB()
 
     def summarize_history(self):
         self.interactions_nb += 1
@@ -61,14 +64,15 @@ class AInteractions:
         response = requests.get(url, headers=headers)
         return response.json()
 
-    def chatgpt_request(self, msg):
+    def chatgpt_request(self, msg, new_photo=False):
         # Ajoute le message utilisateur à l'historique
 
-        if self.current_history and self.current_history.speaker_name:
+        if self.current_history.speaker_name:
             msg = json.dumps({NAME: self.current_history.speaker_name})+msg
 
-        if self.new_image:
-            self.current_history.add_image_and_text(self.camera_manager.get_current_photo(), msg)
+        if new_photo:
+            url = self.camera_manager.take_and_upload_photo()
+            self.current_history.add_image_and_text(url, msg)
         else:
             self.current_history.add_user_text(msg)
 
@@ -82,7 +86,6 @@ class AInteractions:
         self.current_history.add_system_text(new_msg)
 
         return new_msg
-
 
     def generate_request(self, instructions, add_history=False):
         history = []
@@ -152,7 +155,7 @@ class AInteractions:
 
         if self.disabled and WAKE_UP_WORD in question.lower():
             self.disabled = False
-            self.current_history = ChatDB.create({})
+            self.current_history = self.chat_db.create({})
             self.interactions_nb = 0
         elif self.disabled:
             return

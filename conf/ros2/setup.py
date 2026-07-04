@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            "lights_node = vision.nodes.lights_node:main",
+            "ai_node = vision.nodes.ai_node:main",
         ],
     },
 )

@@ -4,7 +4,7 @@
 #  become: yes
 
   vars_files:
-  - "/home/dadou/Nextcloud/Didier/python/dadou_utils_ros/ansible/vars/main.yml"
+  - "/home/dadou/Nextcloud/dev/didier/python/dadou_utils_ros/ansible/vars/main.yml"
 
   tasks:
   - name: Synchronize mediamtx

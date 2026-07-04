@@ -5,12 +5,12 @@ from launch_ros.actions import Node
 def generate_launch_description():
     ld = LaunchDescription()
 
-    lights_server_node = Node(
+    ai_server_node = Node(
         package="robot",
-        executable="lights_node",
-        name="lights_node"
+        executable="ai_node",
+        name="ai_node"
     )
 
-    ld.add_action(lights_server_node)
+    ld.add_action(ai_server_node)
 
     return ld

@@ -41,6 +41,7 @@ ENV PYTHONPATH "${PYTHONPATH}:/home/ros2_ws"
 #### PROJECT SPECIFIQUE
 RUN pip3 install -r /home/ros2_ws/src/$PROJECT/conf/requirements.txt
 ENTRYPOINT ["/bin/bash", "-c", "source /home/scripts/launch-ros-in-docker.sh"]
+ENTRYPOINT ["/bin/bash", "-c", "source /home/ros2_ws/src/vision/conf/scripts/launch-ros-in-docker.sh"]
 #### FIN PROJECT SPECIFIQUE
 
 #COPY robot/test.py .

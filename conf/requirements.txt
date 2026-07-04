@@ -6,7 +6,7 @@ adafruit-blinka
 SpeechRecognition
 numpy
 requests
-pyaudio
+pyaudio~=0.2.14
 openai
 pytest
 args~=0.1.0
@@ -14,6 +14,7 @@ args~=0.1.0
 #board~=1.0
 colorlog~=6.7.0
 filetype~=1.2.0
+flac
 #gTTS~=2.2.4
 #openai-whisper
 pip>=24.1
@@ -28,7 +29,9 @@ pydub~=0.25.1
 #rpi_python_drv8825
 #setuptools version to make ros2 humble work (58.2.0) changed to 70.1.1 the 26/06/2024 still seeams to work
 setuptools==70.1.1
+#setuptools==78.1.0
 sqlobject
+scipy~=1.15.2
 #torch~=2.3.0
 #uvloop~=0.17.0
 #watchdog~=3.0.0

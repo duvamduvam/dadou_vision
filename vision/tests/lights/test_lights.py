@@ -3,10 +3,10 @@ import os
 
 import board
 
-from dadou_utils.logging_conf import LoggingConf
-from dadou_utils.utils.time_utils import TimeUtils
+from dadou_utils_ros.logging_conf import LoggingConf
+from dadou_utils_ros.utils.time_utils import TimeUtils
 
-from dadou_utils.utils_static import LIGHTS_PIN, LIGHTS_LED_COUNT, BRIGHTNESS, LIGHTS_START_LED, LIGHTS_END_LED, \
+from dadou_utils_ros.utils_static import LIGHTS_PIN, LIGHTS_LED_COUNT, BRIGHTNESS, LIGHTS_START_LED, LIGHTS_END_LED, \
     LOGGING_TEST_FILE_NAME, DEFAULT
 from vision.files.vision_json_manager import HardDriveJsonManager
 from vision.vision_config import config, JSON_HELMET, HELMET_LIGHTS

@@ -11,9 +11,10 @@ class MyTestCase(unittest.TestCase):
         speaker_text = "speaker text truc machin"
         entry = ChatDB.create({})
         #entry = DBManager.insert(ChatDB, {})
-        entry.add_interaction(speaker_text, ai_text)
-        entry.add_interaction(speaker_text, ai_text)
-        entry.add_interaction(speaker_text, ai_text)
+        entry.add_user_text(speaker_text)
+        entry.add_system_text(ai_text)
+        entry.add_user_text(speaker_text)
+        entry.add_system_text(ai_text)
 
 if __name__ == '__main__':
     unittest.main()

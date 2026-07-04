@@ -1,6 +1,11 @@
+import logging
+from pathlib import Path
+
 import pysftp
 from urllib.parse import urlparse
 import os
+
+from vision.vision_config import UPLOAD_FOLDER, BASE_URL
 
 
 class Sftp:
@@ -70,17 +75,22 @@ class Sftp:
         except Exception as err:
             raise Exception(f"Failed to download file {remote_path}: {err}")
 
-    def upload(self, source_local_path, remote_path):
+    def upload(self, source_local_path, remote_path=UPLOAD_FOLDER):
         """Uploads a file from local to the SFTP server"""
+        file_name = Path(source_local_path).name
+        remote_path += file_name
+        self.connect()
         try:
-            print(
-                f"Uploading to {self.hostname} as {self.username} [(remote: {remote_path}); (local: {source_local_path})]")
+            logging.info("Uploading to {} as {} [(remote: {}); (local: {})]".format(self.hostname, self.username, remote_path, source_local_path))
 
             # Upload the file
             self.connection.put(source_local_path, remote_path)
-            print("Upload completed")
+            logging.info("Upload completed")
 
         except Exception as err:
             raise Exception(f"Failed to upload file {source_local_path}: {err}")
+
+        self.disconnect()
+        return BASE_URL+file_name
 
 

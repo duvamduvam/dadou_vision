@@ -5,9 +5,10 @@ services:
     build:
       context: ../../..
       dockerfile: conf/docker/arm/Dockerfile-arm
-    #environment:
+    environment:
       #- DISPLAY=${DISPLAY}
-    #  - ALSA_CARD=0
+      - ALSA_CARD=0
+      - PULSE_SERVER=unix:/run/user/1000/pulse/native
     #ports:
     #  - "80:80"
     #  - "8000-9000:8000-9000"
@@ -18,7 +19,7 @@ services:
 
       - ../../../conf:/home/ros2_ws/src/vision/conf
       - ../../../robot:/home/ros2_ws/src/vision/robot
-      - ../../../dadou_utils:/home/ros2_ws/src/vision/dadou_utils
+      - ../../../dadou_utils_ros:/home/ros2_ws/src/vision/dadou_utils_ros
       - ../../../json:/home/ros2_ws/src/vision/json
       - ../../../../robot_bringup:/home/ros2_ws/src/robot_bringup
       - ../../../../robot_interfaces:/home/ros2_ws/src/robot_interfaces
@@ -30,8 +31,14 @@ services:
       - ../../../conf/ros2/package.xml:/home/ros2_ws/src/vision/package.xml
       - /dev:/dev
       - /dev/snd:/dev/snd
+      - /usr/share/alsa/alsa.conf:/usr/share/alsa/alsa.conf
     #  - /dev/null:/folder/fileToBeExcluded
     #accès device ACMO gpio serial by id disque etc ...
     privileged: true
  #   devices:
- #    - /dev
+ #   - "/dev/snd:/dev/snd"
+ #   cap_add:
+ #     - SYS_ADMIN
+ #   user: "${UID}:${GID}"
+ #   group_add:
+ #     - audio

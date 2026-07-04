@@ -7,7 +7,7 @@ from sqlobject.dberrors import DuplicateEntryError
 from sqlobject.sqlite import builder
 from datetime import date, datetime
 
-from dadou_utils.utils_static import DB_DIRECTORY, SEQUENCES_DB, NAME, SEQUENCES, CHAT_DB, ID, ROLE, SYSTEM, USER, \
+from dadou_utils_ros.utils_static import DB_DIRECTORY, SEQUENCES_DB, NAME, SEQUENCES, CHAT_DB, ID, ROLE, SYSTEM, USER, \
     CONTENT, DATE
 from robot.db.db_manager import DBManager
 from vision.vision_config import config
@@ -78,7 +78,7 @@ class ChatDB(SQLObject):
             },
           ]})
 
-    def add_user_img(self, image_url, text):
+    def add_image_and_text(self, image_url, text):
 
         self.add_interaction({ROLE: USER, CONTENT: [
             {"type": "text", "text": text},

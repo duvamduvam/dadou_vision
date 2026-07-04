@@ -1,9 +1,11 @@
 import configparser
+import logging
 
-from dadou_utils.utils_static import CONFIG_DIRECTORY
+from dadou_utils_ros.utils_static import CONFIG_DIRECTORY
 from vision.vision_config import config
 
 config_parser = configparser.ConfigParser()
+logging.info(config[CONFIG_DIRECTORY] + 'secret')
 config_parser.read(config[CONFIG_DIRECTORY] + 'secret')
 
 CHAT_GPT_KEY = config_parser['DEFAULT']['chatgpt_key']

@@ -4,32 +4,57 @@ import time
 import numpy as np
 import openai
 import pyaudio
+from openai import OpenAI
+import scipy.signal
 
-from dadou_utils.utils_static import GPT_VOICE
+from dadou_utils_ros.utils_static import GPT_VOICE, ALSA_CHANNEL
+from vision.ai.ai_static import AI_MODERATION, AI_INSTRUCTIONS, CHAT_GPT_KEY
 from vision.vision_config import config
 
 
 class AIAudio:
 
-    def stream_to_speakers(self, msg, robot_effect=False) -> None:
+    def __init__(self):
 
-        player_stream = pyaudio.PyAudio().open(format=pyaudio.paInt16, channels=1, rate=24000, output=True)
-        start_time = time.time()
-        with openai.audio.speech.with_streaming_response.create(
-                model="tts-1",
-                voice=config[GPT_VOICE],
-                response_format="wav",  # similar to WAV, but without a header chunk at the start.
-                input=msg
-        ) as response:
-            logging.info(f"Time to first byte: {int((time.time() - start_time) * 1000)}ms")
-            for chunk in response.iter_bytes(chunk_size=1024):
-                if robot_effect:
-                    player_stream.write(self.apply_robotic_effect(chunk))
-                else:
+        self.chatgpt_key = CHAT_GPT_KEY
+        openai.api_key = CHAT_GPT_KEY
+        self.assistant = OpenAI(api_key=CHAT_GPT_KEY)
+        self.assistant.moderations.create(input=AI_MODERATION)
+
+    def stream_to_speakers(self, msg, robot_effect=False) -> None:
+        p = pyaudio.PyAudio()
+        player_stream = None
+        try:
+            player_stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, output=True)
+            start_time = time.time()
+
+            with openai.audio.speech.with_streaming_response.create(
+                    model="tts-1",
+                    voice=config[GPT_VOICE],
+                    response_format="wav",
+                    input=msg
+            ) as response:
+                logging.info(f"Time to first byte: {int((time.time() - start_time) * 1000)}ms")
+                for chunk in response.iter_bytes(chunk_size=1024):
                     player_stream.write(chunk)
+
+            logging.info("Lecture terminée.")
+
+        except Exception as e:
+            logging.error(f"Erreur PyAudio: {e}")
+
+        #finally:
+        #    player_stream.stop_stream()
+        #    player_stream.close()
+        #    p.terminate()
 
         logging.info(f"Done in {int((time.time() - start_time) * 1000)}ms.")
 
+    def resample_audio(self, audio_bytes, input_rate=24000, output_rate=44100):
+        """ Convertit un flux audio brut de input_rate à output_rate """
+        audio_np = np.frombuffer(audio_bytes, dtype=np.int16)
+        resampled_audio = scipy.signal.resample(audio_np, int(len(audio_np) * output_rate / input_rate))
+        return resampled_audio.astype(np.int16).tobytes()
 
     def add_distortion(self, audio_data, threshold=3000):
         """ Applique un effet de distorsion en écrêtant les échantillons au-delà d'un seuil. """

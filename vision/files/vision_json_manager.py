@@ -1,9 +1,9 @@
 import logging
 
 # '{}_{}_{}_{}'.format(s1, i, s2, f)
-from dadou_utils.files.abstract_json_manager import AbstractJsonManager
-from dadou_utils.utils_static import COLOR, JSON_LIGHTS_BASE
-from dadou_utils.utils_static import JSON_AUDIOS, JSON_COLORS, JSON_MAPPINGS, \
+from dadou_utils_ros.files.abstract_json_manager import AbstractJsonManager
+from dadou_utils_ros.utils_static import COLOR, JSON_LIGHTS_BASE
+from dadou_utils_ros.utils_static import JSON_AUDIOS, JSON_COLORS, JSON_MAPPINGS, \
     JSON_LIGHTS
 from vision.vision_config import JSON_HELMET
 
