@@ -1,8 +1,11 @@
 # Architecture cible — dadou_vision_ros (refonte 2026-07)
 
-Cerveau perceptif de Didier, sur **Raspberry Pi 5 (8 Go, hostname `vision`, Pi OS Lite
-trixie)**. Remplace la « suite d'essais » 2023-2025 (état des lieux du 2026-07-04 :
-3 briques réutilisables, le reste refait).
+**Le CERVEAU AUTONOME de Didier** — sur Raspberry Pi 5 (8 Go, hostname `vision`,
+Pi OS Lite trixie). Objectif assumé (2026-07-04) : **un personnage à part entière**,
+qui suit et reconnaît les gens, interagit de sa propre initiative avec le public et
+avec son créateur, ressent et exprime des émotions. Le robot (dadou_robot_ros) est
+son corps ; ce dépôt est sa tête. Remplace la « suite d'essais » 2023-2025 (état des
+lieux du 2026-07-04 : 3 briques réutilisables, le reste refait).
 
 ## Principes (non négociables, hérités du parc)
 
@@ -77,6 +80,17 @@ mux) ne viendra qu'après validation scénique du regard.
   Si le CPU ne suffit pas : Hailo AI HAT (~70 €) en plan B.
 - **V2 — parole & émotions** : chat_node (STT → GPT-4o → TTS + émotion → /face),
   micro USB à acheter avant. Démo : conversation avec Didier qui « ressent ».
+- **V3 — le personnage autonome** (l'objectif final) : un exécutif comportemental
+  (py_trees, cf. Phase 4 de la feuille de route du parc) qui ORCHESTRE les briques :
+  état interne (humeur, énergie, curiosité) ; **persona Didier** (prompt système
+  versionné = sa personnalité, son histoire, son humour) ; **mémoire des personnes**
+  (extension de chat_db : qui il a vu, de quoi ils ont parlé — il reconnaît son
+  créateur) ; **initiative** : il décide seul de suivre du regard, d'interpeller
+  quelqu'un, de bouder, de jouer une animation. Les comportements moteurs restent
+  soumis au mux/deadman du robot — l'autonomie n'affaiblit JAMAIS la sécurité :
+  sur scène, la télécommande garde toujours la priorité (remote > autonome).
+  Démo : Didier remarque quelqu'un qui entre, le suit du regard, engage la
+  conversation, et s'en souvient le lendemain.
 
 ## Matériel
 
