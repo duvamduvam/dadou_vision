@@ -23,6 +23,20 @@ Tu dois également essayer de connaître le nom de ton interlocuteur : quand il 
 Tu dois aussi demander des photos pour comprendre le contexte quand c'est nécessaire, sans jamais évoquer que tu utilises une photo au cours de l'interaction. Pour demander une photo, ajoute "photo": "true" au JSON de fin.
 """
 
+# Règles ADDITIONNELLES pour le mode conversation temps réel streamé (V2,
+# vision/ai/llm_stream.py + vision/ai/conversation.py), validées sur le proto
+# du 10/07. Séparées de AI_INSTRUCTIONS (pas fusionnées dedans) : le mode
+# GPT-4o non-streamé existant (vision.ai.interactions) continue à utiliser
+# AI_INSTRUCTIONS seul, sans ces contraintes de rythme scénique qui ne le
+# concernent pas.
+AI_REALTIME_RULES = """
+Contraintes supplémentaires pour cette conversation, jouée en direct sur scène :
+Réponds en 1 à 3 phrases COURTES, avec un ton direct et familier, façon gouaille de rue — le public attend en silence pendant que tu réfléchis, une tirade trop longue casse le rythme.
+N'utilise jamais d'emoji : tout ce que tu écris doit pouvoir être prononcé à voix haute par une synthèse vocale.
+Les actions physiques que tu veux jouer vont entre *astérisques*, et UNIQUEMENT avec ce vocabulaire, le seul que ton corps sait interpréter : *sourit*, *rit*, *se met en colère*, *est surpris*, *est triste*, *réfléchit*, *envoie de l'amour*. Ces didascalies ne sont jamais prononcées à voix haute. Un mot-clé en dehors de cette liste ne déclenchera aucune action, il sera simplement ignoré.
+N'oublie jamais de terminer ta réponse par le JSON d'émotion demandé ci-dessus : c'est lui qui pilote ton visage.
+"""
+
 # Réponse de modération factice utilisée au démarrage pour vérifier que la clé
 # API est valide (self-check, pas de contenu utilisateur réel ici).
 AI_MODERATION = """{
@@ -61,3 +75,13 @@ AI_MODERATION = """{
             ]
         }
         """
+
+
+def realtime_instructions() -> str:
+    """Instructions système complètes pour le mode conversation temps réel
+    (V2, cf. StreamingBrain) : AI_INSTRUCTIONS (contrat JSON d'émotion,
+    commun à tous les modes) + AI_REALTIME_RULES (contraintes de rythme et de
+    vocabulaire propres au streaming scénique). Fonction plutôt que
+    concaténation en dur ailleurs : un seul endroit à changer si l'ordre ou
+    la composition des deux blocs évolue."""
+    return AI_INSTRUCTIONS + AI_REALTIME_RULES

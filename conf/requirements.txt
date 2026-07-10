@@ -41,3 +41,21 @@ mediapipe==0.10.18
 # n'exige numpy>=2 (vérifié : openai/sqlobject/pyaudio/scipy s'en accommodent).
 numpy<2
 scipy
+
+# V2 streaming (conversation temps réel, cf. ARCHITECTURE.md) : STT local
+# (vision/ai/stt.py, FasterWhisperStt) — pas d'appel réseau/latence API pour
+# la reconnaissance vocale, tourne en CPU int8 sur le Pi 5. PIÈGE À SURVEILLER
+# au build conteneur : faster-whisper embarque ctranslate2, qui doit fournir
+# un wheel cp312/aarch64 (même contrainte de plateforme que mediapipe
+# ci-dessus) — à vérifier au premier build du conteneur V2, pas testé en CI
+# (requirements-test.txt ne l'installe pas, import différé dans stt.py).
+faster-whisper
+
+# V2 streaming : TTS local, voix DÉDIÉE à Didier (vision/ai/tts_piper.py,
+# PiperTts) — même logique que faster-whisper ci-dessus : local, pas de
+# latence réseau, personnage propre plutôt que la voix OpenAI générique de
+# vision/ai/tts.py. >=1.3 : version où l'API Python (PiperVoice.load +
+# synthesize_wav) est stable ; PIÈGE À SURVEILLER au build conteneur : wheel
+# cp312/aarch64 requis pour le Pi 5, comme faster-whisper — non testé en CI
+# (import différé dans tts_piper.py, requirements-test.txt ne l'installe pas).
+piper-tts>=1.3
