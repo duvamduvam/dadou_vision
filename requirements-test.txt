@@ -4,3 +4,9 @@ pytest
 # volontairement stdlib-only pour rester testables sans conf/secret ni
 # openai/opencv/pyaudio installés.
 sqlobject
+# Nécessaire pour tester vision.audio.effects (trémolo/distorsion) et
+# vision.audio.beeps (bips de réflexion) — pas d'autre dépendance audio en CI
+# (openai/pyaudio/scipy/piper/faster_whisper restent hors requirements-test.txt).
+# <2 : mediapipe (V1, hors CI) impose déjà numpy<2 en prod, on aligne la CI sur
+# la même contrainte pour ne pas tester un comportement numpy que la prod n'a pas.
+numpy<2
