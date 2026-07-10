@@ -37,4 +37,9 @@ services:
       - /dev:/dev
       # Audio (TTS, pas encore utilisé par le heartbeat V0, prêt pour V2).
       - /dev/snd:/dev/snd
+      # Alias ALSA casque_mic/mixette (vision_config.py chat_mic_device/
+      # chat_out_device) : définis dans /etc/asound.conf de L'HÔTE (Pi 5),
+      # PAS dans le dépôt (dépend du câblage USB physique de la machine,
+      # jamais commité) — montage read-only, jamais écrit depuis le conteneur.
+      - /etc/asound.conf:/etc/asound.conf:ro
     privileged: true

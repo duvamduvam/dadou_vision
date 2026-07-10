@@ -12,6 +12,12 @@
   <!-- Suivi de personne V1 : /vision/person publie des geometry_msgs/PointStamped
        (contrat ARCHITECTURE.md), cf. vision/nodes/person_tracker_node.py. -->
   <depend>geometry_msgs</depend>
+  <!-- Conversation temps réel V2 : chat_node publie sur les topics FACE/
+       ANIMATION existants du robot via robot_interfaces/StringTime (zéro
+       nouveau topic, cf. ARCHITECTURE.md) — même dépendance que côté
+       dadou_robot_ros ; robot_interfaces arrive par rsync ansible en src/,
+       cf. docker-compose-arm.yml. -->
+  <depend>robot_interfaces</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

@@ -1,7 +1,9 @@
-"""Launch V1 : heartbeat (vision_status) + suivi de personne (person_tracker).
+"""Launch V1/V2 : heartbeat (vision_status) + suivi de personne
+(person_tracker) + conversation temps réel (chat, V2 — OFF par défaut).
 
     ros2 launch vision vision.launch.py
     ros2 launch vision vision.launch.py score_threshold:=0.5 ema_alpha:=0.3
+    ros2 launch vision vision.launch.py chat_enabled:=true
 
 POURQUOI un launch file plutôt que deux `ros2 run ... &` dans
 conf/scripts/launch-ros-in-docker.sh (option envisagée par la mission V1) :
@@ -16,9 +18,32 @@ launch/drive.launch.py) : même choix pour rester cohérent dans le parc.
 Défauts alignés sur person_tracker_node.py (DEFAULT_MODEL_PATH etc.) — s'ils
 divergent un jour, ce fichier prime au runtime (les défauts du node ne
 servent que pour un lancement direct hors launch, ex. tests manuels).
+
+POURQUOI chat_enabled=false PAR DÉFAUT (contrairement à person_tracker,
+toujours lancé) : person_tracker est le SERVICE PRINCIPAL de ce dépôt
+(perception, toujours utile) ; le node chat consomme un micro/haut-parleur
+physiques et un budget LLM (API payante via OpenRouter) — il ne doit
+s'activer qu'explicitement pour une séquence de spectacle qui en a besoin,
+jamais par défaut au démarrage du conteneur.
+
+POURQUOI aucun paramètre chat_* (llm_model, whisper_model...) n'est exposé
+ICI contrairement à camera_device/model_path pour person_tracker : ces
+valeurs viennent TOUTES de vision_config.config, lu directement par
+ChatNode.__init__ via vision.nodes._chat_wiring.default_chat_parameters —
+les redéclarer ici en DeclareLaunchArgument imposerait soit de dupliquer les
+défauts en dur (interdit par vision_config.py : "aucun autre fichier ne doit
+coder une valeur par défaut en dur"), soit de les laisser vides par défaut
+("") ce qui CASSERAIT le node au démarrage pour les paramètres non-string
+(refresh_ms/beep_seconds : ROS2 rejette un override de type incompatible
+avec le type déclaré côté node, ex. chaîne vide face à un entier). Pour un
+réglage ponctuel, le pattern déjà établi dans ce dépôt (cf. docstring de
+person_tracker_node.py) est `ros2 run vision chat --ros-args -p
+whisper_model:=tiny` — un lancement direct hors launch, pas un argument de
+ce fichier.
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -28,6 +53,7 @@ def generate_launch_description():
     model_path = LaunchConfiguration("model_path")
     score_threshold = LaunchConfiguration("score_threshold")
     ema_alpha = LaunchConfiguration("ema_alpha")
+    chat_enabled = LaunchConfiguration("chat_enabled")
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -47,6 +73,10 @@ def generate_launch_description():
             "ema_alpha", default_value="0.4",
             description="Coefficient de lissage exponentiel azimut/élévation (vision/tracking/target_picker.py)",
         ),
+        DeclareLaunchArgument(
+            "chat_enabled", default_value="false",
+            description="Active le node de conversation temps réel (micro -> LLM -> voix) — OFF par défaut, cf. docstring de module",
+        ),
 
         # V0 : heartbeat, preuve de vie ROS bout-en-bout (déjà validé sur le
         # Pi 5, gardé tel quel — /vision/status ne doit jamais disparaître,
@@ -65,5 +95,20 @@ def generate_launch_description():
                 "score_threshold": score_threshold,
                 "ema_alpha": ema_alpha,
             }],
+        ),
+
+        # V2 : conversation temps réel -> topics face/animation existants du
+        # robot (cf. ARCHITECTURE.md, chat_node.py). Lancé UNIQUEMENT si
+        # chat_enabled:=true — sinon ce Node n'apparaît même pas dans la
+        # description résolue (IfCondition), pas de tentative de démarrage
+        # avortée qui polluerait les logs. Aucun paramètre transmis : le node
+        # construit ses propres défauts depuis vision_config.config (cf.
+        # POURQUOI en tête de fichier) — un réglage ponctuel passe par
+        # `ros2 run vision chat --ros-args -p <param>:=<valeur>`.
+        Node(
+            package="vision",
+            executable="chat",
+            name="chat",
+            condition=IfCondition(chat_enabled),
         ),
     ])

@@ -31,6 +31,10 @@ setup(
             'vision_status = vision.nodes.vision_status_node:main',
             # Suivi de personne V1 : webcam -> détection -> /vision/person.
             'person_tracker = vision.nodes.person_tracker_node:main',
+            # Conversation temps réel V2 : micro -> LLM streamé -> voix +
+            # expressions faciales (OFF par défaut dans le launch, cf.
+            # conf/ros2/launch/vision.launch.py argument chat_enabled).
+            'chat = vision.nodes.chat_node:main',
         ],
     },
 )

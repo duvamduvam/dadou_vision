@@ -53,4 +53,44 @@ ENV PIP_BREAK_SYSTEM_PACKAGES=1
 # fournie par l'image de base, déjà compatible avec Jazzy).
 RUN pip3 install --no-cache-dir --ignore-installed -r /home/ros2_ws/src/vision/conf/requirements.txt
 
+# Voix Piper de Didier (V2 conversation, vision/ai/tts_piper.py — chemin
+# attendu = vision_config.config["chat_piper_voice"]) : téléchargée DANS
+# L'IMAGE (curl -fL --retry 3, même pattern que le modèle MediaPipe
+# ci-dessus) — fr_FR-siwis-medium, voix française medium-quality retenue au
+# proto validé du 10/07 (cf. CLAUDE.md du dépôt). Piper exige DEUX fichiers
+# (le .onnx et son config .json à côté, cf. PiperVoice.load) : les deux sont
+# téléchargés, renommés "didier.onnx"(.json) pour matcher le chemin de config.
+#
+# PIÈGE DÉCOUVERT (non corrigé ici — vision_config.py est déjà committé, hors
+# périmètre de ce lot) : ce chemin est SOUS medias/, bind-monté par
+# docker-compose-arm.yml en dev/prod (volume ../../../medias:.../medias) —
+# contrairement au modèle MediaPipe et au cache faster-whisper ci-dessous,
+# rangés eux HORS de tout bind-mount. Sur le Pi (déploiement ansible = rsync
+# du checkout LOCAL, pas de git sur le Pi, cf. CLAUDE.md), si medias/voices/
+# n'existe pas aussi sur la machine source du rsync, le bind-mount masque la
+# voix téléchargée ici au build et le node chat échoue au démarrage avec un
+# message actionnable (ChatStartupError "voix Piper introuvable"), pas un
+# crash silencieux — mais ça reste à surveiller au premier déploiement V2 :
+# soit committer medias/voices/didier.onnx(.json), soit les déposer
+# manuellement sur la machine de déploiement avant le premier lancement.
+RUN mkdir -p /home/ros2_ws/src/vision/medias/voices && \
+    curl -fL --retry 3 -o /home/ros2_ws/src/vision/medias/voices/didier.onnx \
+      https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx && \
+    curl -fL --retry 3 -o /home/ros2_ws/src/vision/medias/voices/didier.onnx.json \
+      https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json
+
+# Modèle STT faster-whisper "base" int8 (V2 conversation, vision/ai/stt.py —
+# FasterWhisperStt) : préchargé DANS L'IMAGE pour un fonctionnement HORS
+# LIGNE (robot de spectacle de rue, pas toujours connecté au moment de jouer).
+# HF_HOME fixé à un chemin HORS de tout bind-mount docker-compose-arm.yml
+# (contrairement à medias/ ci-dessus, cf. piège documenté) : le cache
+# HuggingFace rempli ici au build SURVIT donc aux montages de dev, comme le
+# modèle MediaPipe. stt.py n'a PAS besoin de connaître ce chemin : c'est
+# cette variable d'environnement, présente au runtime (ENV persiste dans
+# l'image), qui fait que WhisperModel("base", ...) sans download_root
+# explicite retrouve le même cache que celui rempli par la commande
+# ci-dessous, sans appel réseau au démarrage du node.
+ENV HF_HOME=/home/ros2_ws/models/whisper-cache
+RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
+
 ENTRYPOINT ["/bin/bash", "-c", "source /home/ros2_ws/src/vision/conf/scripts/launch-ros-in-docker.sh"]
