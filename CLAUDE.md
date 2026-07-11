@@ -30,5 +30,11 @@ Cerveau perceptif du robot de théâtre Didier, sur Pi 5 « vision » (alias ssh
 - Pièges consignés dans les commits/le code : logger rclpy ≠ logging stdlib
   (f-strings), purger build/ après changement numpy, mediapipe impose numpy<2
   + opencv-contrib (un seul opencv, libgl1 requis).
+- **Photo de contrôle par la webcam** : `conf/scripts/photo-camera.sh` (à lancer
+  sur le Pi ; validé 2026-07-11). La caméra étant tenue en exclusif par
+  person_tracker (aucun topic image publié), le script arrête le tracker, capture
+  via OpenCV (15 trames de chauffe — auto-exposition lente), puis `docker restart`
+  restaure le pipeline nominal. Depuis le PC :
+  `ssh v 'bash /home/pi/ros2_ws/src/vision/conf/scripts/photo-camera.sh' && scp v:photo-camera.jpg .`
 - Prochains lots : V2 parole/émotions (micro à ACHETER d'abord ; briques
   ai/interactions+tts+chat_db prêtes) → V3 personnage autonome (ARCHITECTURE.md).
