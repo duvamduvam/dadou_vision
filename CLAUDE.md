@@ -36,5 +36,22 @@ Cerveau perceptif du robot de théâtre Didier, sur Pi 5 « vision » (alias ssh
   via OpenCV (15 trames de chauffe — auto-exposition lente), puis `docker restart`
   restaure le pipeline nominal. Depuis le PC :
   `ssh v 'bash /home/pi/ros2_ws/src/vision/conf/scripts/photo-camera.sh' && scp v:photo-camera.jpg .`
-- Prochains lots : V2 parole/émotions (micro à ACHETER d'abord ; briques
-  ai/interactions+tts+chat_db prêtes) → V3 personnage autonome (ARCHITECTURE.md).
+- **V2 parole VALIDÉE en réel (2026-07-11)** : première conversation complète de
+  Didier sur le micro de la webcam (alias `casque_mic`→carte U20 dans
+  /etc/asound.conf du Pi — le casque Logitech est débranché). Pipeline
+  VAD→whisper base→Haiku (OpenRouter)→piper→mixette. Toggle à chaud :
+  topic StringTime `chat` "on"/"off" (même contrat que `gaze` côté robot) —
+  ON au démarrage du node, OFF coupe le micro et met la boucle en pause
+  (whisper/piper restent chargés, reprise instantanée). Tours journalisés
+  (STT, répliques, abandons) dans le log du node via logging stdlib.
+- Pièges V2 payés le 2026-07-11 : ne JAMAIS nommer un attribut de node
+  `self._publishers` (rclpy l'utilise en interne — destroy_node() plante en
+  KeyError et laisse un arecord orphelin qui bloque le micro) ; whisper
+  transcrit le bruit en "... ..." (filtre alphanumérique obligatoire avant
+  l'appel LLM) ; micro indisponible = backoff obligatoire (sinon boucle
+  serrée de respawn arecord à 200 % CPU) ; `rclpy.try_shutdown()` dans les
+  finally (pas shutdown(), déjà appelé par le handler SIGINT en Jazzy).
+  BUG LATENT : REPO_ROOT (vision_config.py) pointe vers site-packages en
+  install colcon — contourné par symlinks conf/ et medias/ dans
+  install/.../site-packages/ du Pi (à corriger proprement côté code).
+- Prochains lots : V3 personnage autonome (ARCHITECTURE.md).

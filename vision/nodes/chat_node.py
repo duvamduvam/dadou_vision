@@ -28,10 +28,13 @@ POURQUOI publish() ne connaît QUE le topic/payload/durée (RosMessage, cf.
        robot — zéro modif côté robot") — un publisher StringTime par topic,
        choisi par message.topic au moment de publier.
 """
+import json
+import logging
 import os
 import threading
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from robot_interfaces.msg import StringTime
 
@@ -85,6 +88,13 @@ LLM_API_KEY_NAME = "openrouter_key"
 # moment du SIGINT — ce n'est qu'une borne de politesse (le thread est démon,
 # cf. docstring de module), pas une garantie d'arrêt immédiat.
 SHUTDOWN_JOIN_TIMEOUT_S = 5.0
+
+# Topic d'activation du mode interactif ("on"/"off") — même contrat que le
+# topic `gaze` de gaze_follower côté robot (dadou_robot_ros) : StringTime,
+# valeur json ou brute tolérée. Permet à la régie de couper/relancer la
+# conversation EN COURS DE SPECTACLE sans tuer le node (le modèle whisper et
+# la voix Piper restent chargés — la reprise est instantanée).
+CHAT_CMD_TOPIC = "chat"
 
 
 class ChatStartupError(RuntimeError):
@@ -210,7 +220,12 @@ class ChatNode(Node):
         beeps_pcm = build_thinking_beeps(beep_seconds, sample_rate=BEEPS_SAMPLE_RATE)
 
         # --- Publishers StringTime : un par topic réutilisé côté robot ----
-        self._publishers = {
+        # PIÈGE (vécu, 2026-07-11) : ne JAMAIS nommer cet attribut
+        # `self._publishers` — rclpy.node.Node tient déjà une liste interne
+        # de ce nom, et l'écraser par un dict fait planter
+        # super().destroy_node() (`self._publishers[0]` -> KeyError: 0),
+        # interrompant le nettoyage à l'arrêt.
+        self._string_time_pubs = {
             FACE: self.create_publisher(StringTime, FACE, 10),
             ANIMATION: self.create_publisher(StringTime, ANIMATION, 10),
         }
@@ -224,25 +239,57 @@ class ChatNode(Node):
         self._mic = mic
         self._player = player
 
+        # --- Mode interactif : ON au démarrage (lancer le node = vouloir la
+        # conversation), basculable à chaud via le topic CHAT_CMD_TOPIC -----
+        self._enabled = threading.Event()
+        self._enabled.set()
+        self.create_subscription(StringTime, CHAT_CMD_TOPIC, self._on_chat_cmd, 10)
+
         # --- Thread de conversation (cf. docstring de module POURQUOI) ----
         self._stop_event = threading.Event()
         self._thread = threading.Thread(
-            target=self._engine.run_forever, args=(self._stop_event,), daemon=True,
+            target=self._engine.run_forever,
+            args=(self._stop_event, self._enabled), daemon=True,
         )
         self._thread.start()
 
         self.get_logger().info(
             f"chat démarré (llm_model={llm_model}, whisper_model={whisper_model}, "
             f"mic_device={mic_device}, out_device={out_device}) -> topics "
-            f"{FACE}/{ANIMATION}"
+            f"{FACE}/{ANIMATION}, toggle sur '{CHAT_CMD_TOPIC}' (on/off)"
         )
+
+    def _on_chat_cmd(self, ros_msg):
+        """Active/désactive le mode interactif — même contrat que le topic
+        `gaze` de gaze_follower (dadou_robot_ros) : "on"/"off", json ou brut."""
+        raw = ros_msg.msg
+        try:
+            value = json.loads(raw)
+        except (ValueError, TypeError):
+            value = raw
+        if value in ("on", True, 1, "1"):
+            self._enabled.set()
+            self.get_logger().info("chat ON : mode interactif activé")
+        elif value in ("off", False, 0, "0"):
+            self._enabled.clear()
+            # Interrompt une ÉCOUTE en cours : read_frame() bloquant retourne
+            # None dès que le subprocess arecord meurt, la boucle run_forever
+            # voit alors enabled baissé et se met en attente. Une RÉPLIQUE en
+            # cours n'est PAS coupée (choix scénique : Didier finit sa
+            # phrase, cf. ConversationEngine.run_forever) — le micro qu'on
+            # stoppe ici est de toute façon déjà coupé pendant qu'il parle
+            # (anti-larsen).
+            self._mic.stop()
+            self.get_logger().info("chat OFF : mode interactif désactivé (micro coupé)")
+        else:
+            self.get_logger().warning(f"commande chat inconnue : {raw!r}")
 
     def _publish(self, message: RosMessage) -> None:
         """Callback injecté dans ConversationEngine : traduit un RosMessage en
         StringTime (cf. vision.nodes._chat_wiring.ros_message_to_string_time_kwargs,
         la seule partie testable sans ROS de cette méthode) et publie sur le
         publisher correspondant à message.topic."""
-        publisher = self._publishers.get(message.topic)
+        publisher = self._string_time_pubs.get(message.topic)
         if publisher is None:
             # Ne devrait jamais arriver (vision.ai.performance ne produit que
             # des RosMessage sur FACE/ANIMATION) : on log plutôt que de
@@ -280,6 +327,19 @@ class ChatNode(Node):
 
 
 def main(args=None):
+    # ConversationEngine (brique pure, sans dépendance rclpy) journalise via
+    # le logging STDLIB — sans handler configuré, ces logs sont INVISIBLES
+    # (niveau WARNING par défaut, aucun handler) : le premier test micro réel
+    # (2026-07-11) s'est déroulé à l'aveugle à cause de ça. Racine à WARNING
+    # pour ne pas hériter du bruit INFO des libs HTTP (httpx/openai), INFO
+    # ciblé sur vision.* uniquement (tours de conversation : STT, répliques,
+    # abandons).
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
+    )
+    logging.getLogger("vision").setLevel(logging.INFO)
+
     rclpy.init(args=args)
     try:
         node = ChatNode()
@@ -290,14 +350,23 @@ def main(args=None):
         # ça n'a pas tourné (mais SANS boucle de crash bruyante : un seul
         # message clair, pas une pile d'exception) — même pattern que
         # person_tracker_node.main().
-        rclpy.shutdown()
+        rclpy.try_shutdown()
         raise SystemExit(1)
 
     try:
         rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # SIGINT (Ctrl-C, pkill -INT) ou arrêt du contexte par rclpy : c'est
+        # le chemin d'arrêt NORMAL, pas une erreur — sans ce except, la pile
+        # d'exception polluerait le log à chaque arrêt de spectacle.
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        # try_shutdown (PAS shutdown) : en Jazzy, le handler SIGINT de rclpy
+        # a souvent DÉJÀ fermé le contexte quand on arrive ici — shutdown()
+        # lèverait « rcl_shutdown already called » (constaté au premier test
+        # du toggle, 2026-07-11).
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

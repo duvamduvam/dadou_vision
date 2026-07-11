@@ -24,6 +24,7 @@ import os
 
 import rclpy
 from geometry_msgs.msg import PointStamped
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from vision.tracking.detector import MediaPipeDetector, open_camera
@@ -166,14 +167,21 @@ def main(args=None):
         # fermé, code de retour non nul pour que systemd/docker sachent que
         # ça n'a pas tourné (mais SANS boucle de crash bruyante : un seul
         # message clair, pas une pile d'exception).
-        rclpy.shutdown()
+        rclpy.try_shutdown()
         raise SystemExit(1)
 
     try:
         rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # SIGINT ou arrêt du contexte par rclpy : chemin d'arrêt NORMAL (fin
+        # de spectacle, docker stop), pas une erreur à tracer.
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        # try_shutdown (PAS shutdown) : le handler SIGINT de rclpy (Jazzy) a
+        # souvent DÉJÀ fermé le contexte — shutdown() lèverait
+        # « rcl_shutdown already called » (cf. chat_node.main, 2026-07-11).
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

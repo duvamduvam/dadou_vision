@@ -31,10 +31,37 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Callable, Optional
 
 from vision.ai import performance
 from vision.ai.stream_parser import Didascalie, Emotion, Sentence, StreamPerformanceParser
+
+# Logger stdlib (PAS le logger rclpy : ce module reste sans dépendance ROS,
+# cf. docstring — le node chat configure le niveau/format dans son main()).
+# Les tours de conversation sont journalisés ici (STT, répliques, abandons) :
+# indispensable pour suivre un protocole physique en direct — le premier test
+# micro réel (2026-07-11) s'est fait à l'aveugle faute de ces logs.
+logger = logging.getLogger(__name__)
+
+# Attente (s) par défaut avant de retenter un tour quand le flux micro est
+# mort : sans elle, run_forever repart IMMÉDIATEMENT dans run_once -> un
+# périphérique indisponible (arecord orphelin, câble débranché) devient une
+# boucle serrée qui respawne arecord en continu (~200 % CPU constatés au
+# premier test réel, 2026-07-11). 0,5 s suffit : assez court pour reprendre
+# vite quand le micro revient, assez long pour que la boucle soit inoffensive.
+DEAD_MIC_BACKOFF_S = 0.5
+
+
+def has_usable_text(text: Optional[str]) -> bool:
+    """Un texte STT est exploitable s'il contient au moins 2 caractères
+    alphanumériques. POURQUOI pas un simple len(strip()) : whisper transcrit
+    le bruit pur en ponctuation ("... ... ..."), qui passait l'ancien filtre
+    et déclenchait un appel LLM payant + une réplique de Didier sans que
+    personne n'ait parlé (constaté au premier test micro caméra, 2026-07-11)."""
+    if not text:
+        return False
+    return sum(1 for ch in text if ch.isalnum()) >= 2
 
 
 class ConversationEngine:
@@ -45,7 +72,8 @@ class ConversationEngine:
                  publish: Callable[[object], None],
                  perf=None,
                  beeps_pcm: bytes = b"", beeps_rate: int = 22050,
-                 refresh_ms: int = 15000):
+                 refresh_ms: int = 15000,
+                 dead_mic_backoff_s: float = DEAD_MIC_BACKOFF_S):
         self._mic = mic
         self._vad = vad
         self._stt = stt
@@ -59,6 +87,15 @@ class ConversationEngine:
         # de fonctions, sans avoir à mocker un module entier.
         self._perf = perf if perf is not None else performance
         self._refresh_ms = refresh_ms
+        # Injectable pour les tests (0.0 = pas d'attente) — cf. constante
+        # DEAD_MIC_BACKOFF_S pour le pourquoi de la valeur par défaut.
+        self._dead_mic_backoff_s = dead_mic_backoff_s
+        # Interrupteur de mode interactif, posé par run_forever (None tant
+        # qu'on n'y est pas passé) : run_once s'en sert UNIQUEMENT pour
+        # distinguer « micro mort » (incident -> warning + backoff + restart)
+        # de « micro coupé volontairement par le toggle OFF » (silencieux,
+        # pas de restart — le micro doit RESTER coupé pendant la pause).
+        self._enabled: Optional[threading.Event] = None
 
         # La piste de bips est écrite en wav temporaire UNE SEULE FOIS ici
         # (pas à chaque tour) : son contenu ne change pas d'un tour à
@@ -90,6 +127,9 @@ class ConversationEngine:
         l'Emotion — un seul JSON d'émotion possible par tour, en toute fin de
         flux, cf. stream_parser.flush())."""
         if isinstance(event, Sentence):
+            # Journalisée AVANT la synthèse : si le TTS plante, la trace dit
+            # quand même ce que Didier ALLAIT dire (diagnostic en direct).
+            logger.info("Didier : %s", event.text)
             # speaking_start republié à CHAQUE Sentence (pas seulement la
             # première) : sert de rafraîchissement — cf. commentaire
             # chat_animation_refresh_ms dans vision_config.py, l'animation
@@ -120,10 +160,25 @@ class ConversationEngine:
 
         speech_bytes = self._listen_for_utterance()
         if speech_bytes is None:
+            if self._enabled is not None and not self._enabled.is_set():
+                # Coupure VOLONTAIRE (toggle chat OFF pendant l'écoute, cf.
+                # chat_node._on_chat_cmd qui fait mic.stop()) : pas un
+                # incident — ni warning ni backoff ni restart, le micro doit
+                # rester coupé pendant toute la pause.
+                logger.info("Écoute interrompue (mode interactif désactivé).")
+                return False
             # Flux micro mort en cours d'écoute : on retente un démarrage et
             # on abandonne CE tour (pas d'exception qui remonterait jusqu'à
             # run_forever — un souci matériel ponctuel ne doit pas arrêter la
-            # boucle de conversation).
+            # boucle de conversation). Le log + le backoff sont indispensables :
+            # sans eux, un micro durablement indisponible devient une boucle
+            # serrée INVISIBLE qui respawne arecord en continu (cf. constante
+            # DEAD_MIC_BACKOFF_S — vécu au premier test réel, 2026-07-11).
+            logger.warning(
+                "Flux micro mort en cours d'écoute — nouvel essai dans %.1f s.",
+                self._dead_mic_backoff_s)
+            if self._dead_mic_backoff_s > 0:
+                time.sleep(self._dead_mic_backoff_s)
             self._mic.start()
             return False
 
@@ -141,10 +196,15 @@ class ConversationEngine:
 
         text = self._stt.transcribe(speech_bytes, self._mic.sample_rate)
 
-        if not text or len(text.strip()) < 2:
+        if not has_usable_text(text):
+            # Bruit ou énoncé trop court : PAS d'appel LLM (payant), retour à
+            # l'écoute. Loggé en INFO : c'est la trace qui permet de régler le
+            # VAD/gain micro quand Didier « entend des voix » sur scène.
+            logger.info("Tour abandonné, STT inexploitable : %r", text)
             self._mic.start()
             return False
 
+        logger.info("STT : %r", text)
         return self._speak_reply(text)
 
     def _listen_for_utterance(self) -> Optional[bytes]:
@@ -207,9 +267,29 @@ class ConversationEngine:
         self._mic.start()
         return True
 
-    def run_forever(self, stop_event: threading.Event) -> None:
+    def run_forever(self, stop_event: threading.Event,
+                    enabled: Optional[threading.Event] = None) -> None:
         """Enchaîne les tours jusqu'à stop_event.set() (typiquement déclenché
-        par le node ROS appelant à l'arrêt/désactivation, cf. chat_node V2).
-        Pas de thread créé ici, cf. docstring de module."""
+        par le node ROS appelant à l'arrêt, cf. chat_node V2). Pas de thread
+        créé ici, cf. docstring de module.
+
+        `enabled` (optionnel) : interrupteur de MODE INTERACTIF piloté par
+        l'appelant (topic `chat` "on"/"off" côté node). Quand il est baissé,
+        aucun tour ne démarre — la boucle attend par petits pas (wait borné,
+        PAS un wait() infini : il faut re-vérifier stop_event régulièrement
+        pour que l'arrêt du node reste réactif même en pause). La bascule OFF
+        en PLEIN tour ne coupe pas la réplique en cours (choix scénique :
+        Didier finit sa phrase) — c'est le mic.stop() fait par l'appelant qui
+        interrompt une ÉCOUTE en cours, cf. chat_node._on_chat_cmd."""
+        self._enabled = enabled
         while not stop_event.is_set():
+            if enabled is not None and not enabled.is_set():
+                # mic.stop() idempotent À CHAQUE passage : certains chemins de
+                # fin de tour redémarrent le micro (fin de réplique, STT
+                # inexploitable) AVANT que la boucle ne voie le toggle baissé
+                # — on garantit ici qu'en pause, le micro est TOUJOURS coupé,
+                # quel que soit le chemin qui a rendu la main.
+                self._mic.stop()
+                enabled.wait(timeout=0.2)
+                continue
             self.run_once()

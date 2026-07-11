@@ -14,12 +14,14 @@ ConversationEngine, pas le comportement isolé d'un seul fake.
 """
 import json
 import os
+import threading
+import time
 
 import pytest
 
 from dadou_utils_ros.utils_static import ANIMATION, FACE
 
-from vision.ai.conversation import ConversationEngine
+from vision.ai.conversation import ConversationEngine, has_usable_text
 from vision.ai.performance import RosMessage
 from vision.audio.vad import VadEvent
 
@@ -142,7 +144,9 @@ def _make_engine(timeline, *, frames, vad_events, stt_text, brain_deltas,
                   brain_raises=False, beeps=True):
     """Assemble un ConversationEngine avec des fakes câblés sur la même
     timeline — factorise le câblage répété par les tests ci-dessous.
-    L'appelant est responsable de _cleanup_beeps(engine) en fin de test."""
+    L'appelant est responsable de _cleanup_beeps(engine) en fin de test.
+    dead_mic_backoff_s=0.0 : pas d'attente réelle dans les tests (la valeur
+    par défaut ferait dormir 0,5 s chaque test de flux micro mort)."""
     return ConversationEngine(
         mic=FakeMic(timeline, frames),
         vad=FakeVad(vad_events),
@@ -154,6 +158,7 @@ def _make_engine(timeline, *, frames, vad_events, stt_text, brain_deltas,
         beeps_pcm=BEEPS_PCM if beeps else b"",
         beeps_rate=BEEPS_RATE,
         refresh_ms=REFRESH_MS,
+        dead_mic_backoff_s=0.0,
     )
 
 
@@ -268,12 +273,15 @@ def test_micro_coupe_avant_la_parole_et_redemarre_apres(timeline):
 
 
 # --------------------------------------------------------------------------
-# STT vide/trop court : thinking() est publié quand même (décision
-# documentée en tête de vision/ai/conversation.py), mais RIEN d'autre après.
+# STT inexploitable (vide, trop court, ou PONCTUATION PURE — whisper transcrit
+# le bruit en "... ... ...", vécu au premier test micro caméra 2026-07-11) :
+# thinking() est publié quand même (décision documentée en tête de
+# vision/ai/conversation.py), mais RIEN d'autre après — surtout pas d'appel
+# LLM payant.
 # --------------------------------------------------------------------------
 
-@pytest.mark.parametrize("stt_text", ["", "a"])
-def test_stt_vide_ou_trop_court_publie_thinking_puis_rien_dautre(timeline, stt_text):
+@pytest.mark.parametrize("stt_text", ["", "a", "... ... ... ...", " ?! . "])
+def test_stt_inexploitable_publie_thinking_puis_rien_dautre(timeline, stt_text):
     frames, events = _speech_frames_and_events()
 
     engine = _make_engine(
@@ -342,7 +350,7 @@ def test_erreur_llm_publie_quand_meme_speaking_stop(timeline):
 # Flux micro mort en cours d'écoute : abandon propre, pas d'exception.
 # --------------------------------------------------------------------------
 
-def test_flux_micro_mort_abandonne_le_tour_proprement(timeline):
+def test_flux_micro_mort_abandonne_le_tour_proprement(timeline, caplog):
     # Une seule trame puis plus rien (read_frame() renverra None ensuite) :
     # aucun speech_start n'est jamais atteint.
     frames = [b"f0"]
@@ -353,7 +361,8 @@ def test_flux_micro_mort_abandonne_le_tour_proprement(timeline):
         stt_text="jamais utilisé", brain_deltas=["jamais utilisé"],
     )
     try:
-        result = engine.run_once()
+        with caplog.at_level("WARNING", logger="vision.ai.conversation"):
+            result = engine.run_once()
     finally:
         _cleanup_beeps(engine)
 
@@ -362,3 +371,82 @@ def test_flux_micro_mort_abandonne_le_tour_proprement(timeline):
     assert "publish" not in tags  # même thinking() n'est pas atteint ici
     assert "stt_transcribe" not in tags
     assert tags == ["mic_start", "mic_start"]  # start initial + restart sur flux mort
+    # L'incident est VISIBLE dans les logs (le premier test réel a montré
+    # qu'une boucle micro-mort silencieuse est indiagnosticable en direct).
+    assert any("micro mort" in record.message for record in caplog.records)
+
+
+# --------------------------------------------------------------------------
+# Filtre de texte STT exploitable : au moins 2 caractères alphanumériques
+# (whisper transcrit le bruit pur en ponctuation, cf. has_usable_text).
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text,expected", [
+    (None, False),
+    ("", False),
+    ("a", False),                    # 1 seul alphanumérique
+    ("... ... ... ...", False),      # bruit transcrit en ponctuation pure
+    (" ?! . ", False),
+    ("ça", True),                    # 2 alphanumériques (accentué compris)
+    ("Salut Didier !", True),
+    ("a1", True),
+])
+def test_has_usable_text(text, expected):
+    assert has_usable_text(text) is expected
+
+
+# --------------------------------------------------------------------------
+# Mode interactif (toggle chat on/off, cf. chat_node) : en pause, AUCUN tour
+# ne démarre et le micro est maintenu coupé ; une coupure micro volontaire
+# (OFF pendant l'écoute) n'est PAS traitée comme un incident.
+# --------------------------------------------------------------------------
+
+def test_run_forever_en_pause_ne_lance_aucun_tour_et_coupe_le_micro(timeline):
+    engine = _make_engine(
+        timeline, frames=[b"f0"], vad_events=[None],
+        stt_text="jamais utilisé", brain_deltas=["jamais utilisé"],
+    )
+    stop_event = threading.Event()
+    enabled = threading.Event()  # baissé = mode interactif désactivé
+
+    thread = threading.Thread(
+        target=engine.run_forever, args=(stop_event, enabled), daemon=True)
+    try:
+        thread.start()
+        time.sleep(0.05)  # laisse la boucle de pause tourner quelques cycles
+        stop_event.set()
+        thread.join(timeout=2.0)
+        assert not thread.is_alive()
+    finally:
+        stop_event.set()
+        _cleanup_beeps(engine)
+
+    tags = [event[0] for event in timeline]
+    # Aucun tour n'a démarré (pas de mic_start = pas de run_once) ; le micro
+    # a été activement maintenu coupé pendant la pause.
+    assert "mic_start" not in tags
+    assert "mic_stop" in tags
+
+
+def test_micro_coupe_volontairement_pas_de_restart_ni_warning(timeline, caplog):
+    # Coupure volontaire : l'interrupteur est BAISSÉ au moment où le flux
+    # micro meurt (scénario toggle OFF pendant l'écoute, cf.
+    # chat_node._on_chat_cmd qui fait mic.stop()).
+    engine = _make_engine(
+        timeline, frames=[b"f0"], vad_events=[None],
+        stt_text="jamais utilisé", brain_deltas=["jamais utilisé"],
+    )
+    engine._enabled = threading.Event()  # posé normalement par run_forever
+
+    try:
+        with caplog.at_level("INFO", logger="vision.ai.conversation"):
+            result = engine.run_once()
+    finally:
+        _cleanup_beeps(engine)
+
+    assert result is False
+    tags = [event[0] for event in timeline]
+    # PAS de restart micro : il doit rester coupé pendant toute la pause.
+    assert tags == ["mic_start"]  # uniquement le start initial du tour
+    # Pas de warning « micro mort » : ce n'est pas un incident.
+    assert not any(record.levelname == "WARNING" for record in caplog.records)
