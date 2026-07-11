@@ -53,6 +53,7 @@ def generate_launch_description():
     model_path = LaunchConfiguration("model_path")
     score_threshold = LaunchConfiguration("score_threshold")
     ema_alpha = LaunchConfiguration("ema_alpha")
+    video_fps = LaunchConfiguration("video_fps")
     chat_enabled = LaunchConfiguration("chat_enabled")
 
     return LaunchDescription([
@@ -72,6 +73,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "ema_alpha", default_value="0.4",
             description="Coefficient de lissage exponentiel azimut/élévation (vision/tracking/target_picker.py)",
+        ),
+        DeclareLaunchArgument(
+            "video_fps", default_value="5.0",
+            description="Cadence (i/s) du retour vidéo JPEG camera/image_raw/compressed"
+                        " pour la console de régie (web_bridge) — 0 = désactivé",
         ),
         DeclareLaunchArgument(
             "chat_enabled", default_value="false",
@@ -94,6 +100,7 @@ def generate_launch_description():
                 "model_path": model_path,
                 "score_threshold": score_threshold,
                 "ema_alpha": ema_alpha,
+                "video_fps": video_fps,
             }],
         ),
 

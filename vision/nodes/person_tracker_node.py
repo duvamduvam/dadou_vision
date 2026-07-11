@@ -21,11 +21,14 @@ CONTRAT (ARCHITECTURE.md, ne pas dévier) : silence = personne perdue — on ne
        comme cmd_vel/twist_deadman.
 """
 import os
+import time
 
+import cv2
 import rclpy
 from geometry_msgs.msg import PointStamped
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from sensor_msgs.msg import CompressedImage
 
 from vision.tracking.detector import MediaPipeDetector, open_camera
 from vision.tracking.target_picker import TargetPicker
@@ -49,6 +52,17 @@ CAPTURE_FPS = 30
 # frame_id du contrat ARCHITECTURE.md (topic /vision/person).
 CAMERA_FRAME_ID = "camera"
 
+# Retour vidéo (console de régie, cf. dadou_robot_ros docs/etude-interface-web.md
+# W2 « MJPEG embarqué ») : la webcam étant tenue en EXCLUSIF par ce node, il est
+# la seule source d'images possible — il republie donc ses trames en JPEG
+# compressé (sensor_msgs/CompressedImage), throttlées et à qualité modérée :
+# ~25 Ko/trame à 5 i/s ≈ 125 Ko/s sur le réseau, compatible WiFi/4G, là où du
+# sensor_msgs/Image brut (640x480 BGR) ferait 4,6 Mo/s au même débit. Le
+# web_bridge (Pi robot) sert ces octets TELS QUELS en MJPEG (camera_compressed).
+VIDEO_TOPIC = "camera/image_raw/compressed"
+VIDEO_FPS_DEFAULT = 5.0        # 0 = publication désactivée
+VIDEO_JPEG_QUALITY = 70        # même qualité que _encode_jpeg côté web_bridge
+
 
 class PersonTrackerStartupError(RuntimeError):
     """Levée quand le node ne peut pas démarrer proprement (modèle ou caméra
@@ -69,11 +83,13 @@ class PersonTrackerNode(Node):
         self.declare_parameter("model_path", DEFAULT_MODEL_PATH)
         self.declare_parameter("score_threshold", 0.4)
         self.declare_parameter("ema_alpha", 0.4)
+        self.declare_parameter("video_fps", VIDEO_FPS_DEFAULT)
 
         camera_device = self.get_parameter("camera_device").value
         model_path = self.get_parameter("model_path").value
         score_threshold = float(self.get_parameter("score_threshold").value)
         ema_alpha = float(self.get_parameter("ema_alpha").value)
+        self._video_fps = float(self.get_parameter("video_fps").value)
 
         # Échec explicite et propre si le modèle est absent : mieux vaut un
         # message clair au démarrage ("chemin X introuvable, vérifier le
@@ -114,13 +130,43 @@ class PersonTrackerNode(Node):
 
         self._picker = TargetPicker(ema_alpha=ema_alpha)
         self._publisher = self.create_publisher(PointStamped, "/vision/person", 10)
+
+        # Retour vidéo (cf. constantes VIDEO_*) : publisher créé SEULEMENT si
+        # video_fps > 0 — même garantie structurelle que drive_enabled côté
+        # web_bridge (aucune ligne de code ne PEUT publier d'image sinon).
+        self._video_pub = None
+        self._last_video_s = 0.0
+        if self._video_fps > 0:
+            self._video_pub = self.create_publisher(CompressedImage, VIDEO_TOPIC, 10)
+
         self._timer = self.create_timer(TIMER_PERIOD_SECONDS, self._on_timer)
 
         self.get_logger().info(
             f"person_tracker démarré (camera={camera_device}, model={model_path}, "
-            f"score_threshold={score_threshold:.2f}, ema_alpha={ema_alpha:.2f}) "
-            "-> /vision/person"
+            f"score_threshold={score_threshold:.2f}, ema_alpha={ema_alpha:.2f}, "
+            f"video_fps={self._video_fps:g}) -> /vision/person"
+            + (f" + {VIDEO_TOPIC}" if self._video_pub is not None else "")
         )
+
+    def _publish_video(self, frame) -> None:
+        """Republie la trame courante en JPEG compressé, throttlée à video_fps.
+        Publiée QUE quelqu'un regarde ou non (DDS ne transmet rien sans
+        abonné : le coût réseau est nul sans console ouverte ; le coût CPU de
+        l'encodage — ~2-3 ms à 5 i/s sur Pi 5 — est assumé en continu plutôt
+        que de complexifier avec une détection d'abonnés)."""
+        now = time.monotonic()
+        if now - self._last_video_s < 1.0 / self._video_fps:
+            return  # trame excédentaire : jetée AVANT tout encodage
+        ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, VIDEO_JPEG_QUALITY])
+        if not ok:
+            return  # échec d'encodage ponctuel : on retentera à la prochaine trame
+        self._last_video_s = now
+        msg = CompressedImage()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = CAMERA_FRAME_ID
+        msg.format = "jpeg"
+        msg.data = jpeg.tobytes()
+        self._video_pub.publish(msg)
 
     def _on_timer(self) -> None:
         ok, frame = self._cap.read()
@@ -130,6 +176,11 @@ class PersonTrackerNode(Node):
             # webcam USB peut avoir un hoquet transitoire sans être hors service.
             self.get_logger().warning("Échec de lecture caméra (frame ignorée)")
             return
+
+        # Retour vidéo AVANT la détection : la vidéo vit même si MediaPipe
+        # échoue ou ne voit personne (deux services indépendants).
+        if self._video_pub is not None:
+            self._publish_video(frame)
 
         height, width = frame.shape[:2]
         detections = self._detector.detect(frame)

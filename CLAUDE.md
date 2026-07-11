@@ -36,6 +36,12 @@ Cerveau perceptif du robot de théâtre Didier, sur Pi 5 « vision » (alias ssh
   via OpenCV (15 trames de chauffe — auto-exposition lente), puis `docker restart`
   restaure le pipeline nominal. Depuis le PC :
   `ssh v 'bash /home/pi/ros2_ws/src/vision/conf/scripts/photo-camera.sh' && scp v:photo-camera.jpg .`
+- **Retour vidéo console de régie (2026-07-11, validé réel)** : person_tracker
+  republie ses trames en JPEG (`camera/image_raw/compressed`, ~5 i/s, qualité 70,
+  paramètre `video_fps`, 0 = off) — seule source d'images possible, la webcam lui
+  appartient en exclusif. Consommé par le web_bridge du Pi ROBOT
+  (`camera_compressed=True`, servi tel quel en MJPEG `/video`, cf.
+  dadou_robot_ros docs/interfaces.md).
 - **V2 parole VALIDÉE en réel (2026-07-11)** : première conversation complète de
   Didier sur le micro de la webcam (alias `casque_mic`→carte U20 dans
   /etc/asound.conf du Pi — le casque Logitech est débranché). Pipeline
