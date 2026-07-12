@@ -67,4 +67,13 @@ Cerveau perceptif du robot de théâtre Didier, sur Pi 5 « vision » (alias ssh
   BUG LATENT : REPO_ROOT (vision_config.py) pointe vers site-packages en
   install colcon — contourné par symlinks conf/ et medias/ dans
   install/.../site-packages/ du Pi (à corriger proprement côté code).
+- **Arbitrage amont chat/animations (2026-07-12, lot A+B de l'étude
+  dadou_robot_ros/docs/etude-arbitrage-actionneurs.md)** : chat_node ne se
+  contente plus d'écraser `face`/`animation` au moindre bruit — rattrapage
+  `idle()` après un tour abandonné (le visage ne reste plus coincé sur
+  "reflechit"), et abonnement au topic latché `animation_state` (publié par
+  animations_node côté robot) via `vision.ai.arbitration` : les messages
+  face/animation du chat sont RETENUS tant qu'une séquence de spectacle a la
+  main, et son stop d'animation devient CIBLÉ (n'arrête que "parle", plus
+  d'arrêt global qui écraserait une séquence en cours).
 - Prochains lots : V3 personnage autonome (ARCHITECTURE.md).

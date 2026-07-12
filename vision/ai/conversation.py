@@ -22,10 +22,19 @@ DÉCISION (le déroulé du proto laissait un choix implicite à trancher) :
        en cours), pas une promesse qu'une réponse va suivre — le spectateur
        voit le robot "y penser", ce qui reste cohérent même si l'énoncé
        capté était en fait trop court pour être exploité. cf.
-       test_conversation.py::test_stt_vide_publie_thinking_puis_rien_dautre
-       pour le test qui fige ce choix. Limite connue acceptée : le visage
-       reste sur "reflechit" après un abandon (pas de idle() de rattrapage)
-       — non demandé par la spec V7, à revisiter si ça se voit mal sur scène.
+       test_conversation.py::test_stt_inexploitable_publie_thinking_puis_idle
+       pour le test qui fige ce choix.
+
+       CORRECTIF du 2026-07-12 (étude d'arbitrage des actionneurs, scénario
+       S1 côté robot, cf. dadou_robot_ros/docs/etude-arbitrage-actionneurs.md
+       §3/§5.1) : la « limite connue acceptée » ci-dessus (le visage restait
+       coincé sur "reflechit" après un tour abandonné, faute de rattrapage)
+       est CORRIGÉE — la condition documentée à l'époque ("à revisiter si ça
+       se voit mal sur scène") était remplie, constaté sur le vrai robot.
+       run_once() publie désormais idle() (retour au neutre) dans la branche
+       STT inexploitable, AVANT de relancer le micro. thinking() reste publié
+       dès speech_end SANS changement (réaction honnête toujours voulue) :
+       seule la SORTIE d'un tour abandonné change, pas son entrée.
 """
 from __future__ import annotations
 
@@ -201,6 +210,11 @@ class ConversationEngine:
             # l'écoute. Loggé en INFO : c'est la trace qui permet de régler le
             # VAD/gain micro quand Didier « entend des voix » sur scène.
             logger.info("Tour abandonné, STT inexploitable : %r", text)
+            # Rattrapage idle() AVANT de relancer le micro (cf. docstring de
+            # module, correctif 2026-07-12) : sans ça, le visage restait
+            # coincé sur "reflechit" (publié par thinking() ci-dessus) pour
+            # tout le reste de la pause d'écoute suivante — visible sur scène.
+            self._publish_all(self._perf.idle())
             self._mic.start()
             return False
 

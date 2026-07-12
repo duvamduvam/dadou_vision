@@ -61,6 +61,7 @@ tests lumières/neopixel (copiés du robot), `conf/ros2_dependencies/` dupliqué
 |---|---|---|---|
 | `/vision/person` | `geometry_msgs/msg/PointStamped` | vision → robot | x = azimut normalisé [-1..1] (0 = face caméra), y = élévation, z = confiance [0..1]. 10-15 Hz. Silence = personne perdue (le consommateur gère son timeout, comme cmd_vel). |
 | `/face`, `/audio` | `robot_interfaces/StringTime` | vision → robot | V2 : émotions et parole via les topics EXISTANTS du robot (lights_node/audio_node) — zéro modif côté robot. |
+| `animation_state` | `robot_interfaces/StringTime` (latché) | robot → vision | Arbitrage amont (étude 2026-07-12 côté robot, dadou_robot_ros/docs/etude-arbitrage-actionneurs.md) : chat_node s'y abonne et retient face/animation tant qu'une séquence de spectacle a la main ; son stop d'animation devient CIBLÉ (n'arrête que "parle", jamais une séquence en cours), cf. vision/ai/arbitration.py. |
 
 Côté **robot** (chantier séparé, dadou_robot_ros) : un node `gaze_follower`
 /vision/person → `/neck/position` (**suivre du regard d'abord** — théâtral, sans

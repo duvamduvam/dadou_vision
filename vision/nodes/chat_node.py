@@ -27,19 +27,34 @@ POURQUOI publish() ne connaît QUE le topic/payload/durée (RosMessage, cf.
        ARCHITECTURE.md "V2 : émotions et parole via les topics EXISTANTS du
        robot — zéro modif côté robot") — un publisher StringTime par topic,
        choisi par message.topic au moment de publier.
+POURQUOI le gate `vision.ai.arbitration` (ajouté 2026-07-12, étude
+       d'arbitrage des actionneurs côté robot,
+       dadou_robot_ros/docs/etude-arbitrage-actionneurs.md §3/§5/§6) : sans
+       lui, le chat écrase le visage d'une séquence de spectacle en cours au
+       moindre bruit de salle (S1), et peut la TUER via son stop d'animation
+       — speaking_stop() publie animation=False, qui déclenche un arrêt
+       GLOBAL côté animations_node, pas seulement l'arrêt de "parle" (S2).
+       Le node s'abonne donc en plus à ANIMATION_STATE (StringTime latché,
+       publié par animations_node : nom de la séquence en cours, "" au
+       repos) et retient le dernier état vu ; _publish() consulte
+       arbitration.allow_message() avant chaque publication et retient un
+       message si une séquence de spectacle a la main.
 """
 import json
 import logging
 import os
 import threading
+import time
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
 from robot_interfaces.msg import StringTime
 
-from dadou_utils_ros.utils_static import ANIMATION, FACE
+from dadou_utils_ros.utils_static import ANIMATION, ANIMATION_STATE, FACE
 
+from vision.ai import arbitration
 from vision.ai.ai_static import realtime_instructions
 from vision.ai.conversation import ConversationEngine
 from vision.ai.llm_stream import StreamingBrain
@@ -245,6 +260,37 @@ class ChatNode(Node):
         self._enabled.set()
         self.create_subscription(StringTime, CHAT_CMD_TOPIC, self._on_chat_cmd, 10)
 
+        # --- Arbitrage amont (2026-07-12, cf. docstring de module POURQUOI) :
+        # None = jamais reçu (topic ANIMATION_STATE absent ou robot pas encore
+        # démarré) -- distinct de "" (repos), cf. vision.ai.arbitration : ces
+        # deux valeurs déclenchent des règles différentes dans allow_message.
+        # ÉCRITE par _on_animation_state, qui tourne dans le thread rclpy.spin
+        # (callback ROS) ; LUE par _publish, appelé par le thread DÉDIÉ de
+        # ConversationEngine.run_forever (cf. docstring de module, POURQUOI du
+        # thread) -- donc bien deux threads différents. Aucun verrou n'est
+        # nécessaire malgré tout : l'affectation d'une référence str/None est
+        # une opération atomique sous le GIL CPython, et _publish ne fait
+        # qu'une LECTURE simple (jamais de lecture-puis-modification) -- la
+        # pire chose qui puisse arriver est de lire l'état juste avant ou
+        # juste après une transition, jamais une valeur corrompue.
+        self._animation_state = None
+        # Échéance de PÉREMPTION de l'état actif (garde-fou façon deadman,
+        # cf. arbitration.state_expiry) : si animations_node meurt en pleine
+        # séquence, le "" de fin n'arrive jamais — sans échéance le chat
+        # resterait muet pour toujours. Deux attributs écrits séparément par
+        # le callback : une lecture « déchirée » (état neuf + échéance
+        # ancienne ou l'inverse) reste bénigne — au pire un message retenu ou
+        # laissé passer À l'instant d'une transition, jamais un état corrompu.
+        self._animation_expiry = 0.0
+        # QoS TRANSIENT_LOCAL : DOIT correspondre à celle du publisher côté
+        # animations_node (dadou_robot_ros, depth=1 + durability
+        # TRANSIENT_LOCAL) -- sans ça, un chat_node démarré EN COURS de
+        # spectacle n'obtiendrait l'état courant qu'à la PROCHAINE transition
+        # (donc potentiellement jamais avant la fin de la séquence en cours).
+        self.create_subscription(
+            StringTime, ANIMATION_STATE, self._on_animation_state,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+
         # --- Thread de conversation (cf. docstring de module POURQUOI) ----
         self._stop_event = threading.Event()
         self._thread = threading.Thread(
@@ -284,11 +330,47 @@ class ChatNode(Node):
         else:
             self.get_logger().warning(f"commande chat inconnue : {raw!r}")
 
+    def _on_animation_state(self, ros_msg):
+        """Callback du topic ANIMATION_STATE (latché, publié par
+        animations_node côté robot) : mémorise le nom de la séquence en
+        cours ("" au repos) via vision.ai.arbitration.parse_animation_state
+        (logique de décodage testée hors ROS). Affectation d'un str sur
+        self._animation_state : pas de verrou nécessaire (cf. commentaire
+        du constructeur) -- ce callback tourne dans le thread rclpy.spin,
+        _publish() (appelé par le thread de conversation) ne fait qu'une
+        LECTURE de la référence courante, jamais de lecture-modification."""
+        state = arbitration.parse_animation_state(ros_msg.msg)
+        if state:
+            # ros_msg.time = remaining_ms au (re)démarrage (contrat
+            # animations_node, republié à chaque relance de séquence même à
+            # nom identique) : arme la péremption façon deadman. Échéance
+            # écrite AVANT l'état (une lecture croisée reste bénigne, cf.
+            # commentaire du constructeur).
+            self._animation_expiry = arbitration.state_expiry(
+                int(ros_msg.time), time.monotonic())
+        self._animation_state = state
+
     def _publish(self, message: RosMessage) -> None:
         """Callback injecté dans ConversationEngine : traduit un RosMessage en
         StringTime (cf. vision.nodes._chat_wiring.ros_message_to_string_time_kwargs,
         la seule partie testable sans ROS de cette méthode) et publie sur le
-        publisher correspondant à message.topic."""
+        publisher correspondant à message.topic -- SAUF si l'arbitrage amont
+        retient le message (une séquence de spectacle a la main, cf.
+        vision.ai.arbitration et docstring de module)."""
+        # Péremption appliquée à la LECTURE (cf. arbitration.effective_state) :
+        # un état actif dont l'échéance est dépassée est traité comme le repos
+        # (animations_node probablement mort en pleine séquence).
+        state = arbitration.effective_state(
+            self._animation_state, self._animation_expiry, time.monotonic())
+        if not arbitration.allow_message(message.topic, message.payload, state):
+            # PIÈGE rclpy documenté en tête de fichier : f-strings uniquement,
+            # jamais de %s variadique (RcutilsLogger n'est pas le logging stdlib).
+            self.get_logger().info(
+                f"message {message.topic} retenu : la séquence "
+                f"'{state}' a la main (arbitrage amont)"
+            )
+            return
+
         publisher = self._string_time_pubs.get(message.topic)
         if publisher is None:
             # Ne devrait jamais arriver (vision.ai.performance ne produit que

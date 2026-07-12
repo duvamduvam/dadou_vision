@@ -276,12 +276,15 @@ def test_micro_coupe_avant_la_parole_et_redemarre_apres(timeline):
 # STT inexploitable (vide, trop court, ou PONCTUATION PURE — whisper transcrit
 # le bruit en "... ... ...", vécu au premier test micro caméra 2026-07-11) :
 # thinking() est publié quand même (décision documentée en tête de
-# vision/ai/conversation.py), mais RIEN d'autre après — surtout pas d'appel
-# LLM payant.
+# vision/ai/conversation.py — réaction honnête au fait que le STT tournait
+# réellement), PUIS idle() en rattrapage (correctif 2026-07-12, étude
+# d'arbitrage des actionneurs côté robot, scénario S1 : le visage ne doit
+# plus rester coincé sur "reflechit" après un tour abandonné) — rien d'autre
+# après, surtout pas d'appel LLM payant.
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("stt_text", ["", "a", "... ... ... ...", " ?! . "])
-def test_stt_inexploitable_publie_thinking_puis_rien_dautre(timeline, stt_text):
+def test_stt_inexploitable_publie_thinking_puis_idle(timeline, stt_text):
     frames, events = _speech_frames_and_events()
 
     engine = _make_engine(
@@ -296,16 +299,20 @@ def test_stt_inexploitable_publie_thinking_puis_rien_dautre(timeline, stt_text):
     assert result is False
 
     tags = [event[0] for event in timeline]
-    # thinking() a bien été publié (cf. décision documentée) : c'est le SEUL
-    # publish de tout le tour.
+    # thinking() PUIS idle() : ce sont les DEUX SEULS publish de tout le
+    # tour (plus rien après le rattrapage, cf. commentaire ci-dessus).
     publishes = [event[1] for event in timeline if event[0] == "publish"]
-    assert publishes == [RosMessage(FACE, json.dumps("reflechit"))]
+    assert publishes == [
+        RosMessage(FACE, json.dumps("reflechit")),
+        RosMessage(FACE, json.dumps("stop")),  # idle()
+    ]
     # Le LLM n'a JAMAIS été sollicité : le tour est abandonné avant.
     assert "brain_stream_reply" not in tags
     assert "tts_synthesize" not in tags
-    # Le micro est bien redémarré malgré l'abandon.
+    # Le micro est bien redémarré malgré l'abandon, APRÈS le rattrapage idle().
     assert tags[-1] == "mic_start"
     assert tags.count("mic_start") == 2  # le start() initial + le restart
+    assert tags.index("publish") < tags.index("mic_start", 1)
 
 
 # --------------------------------------------------------------------------
