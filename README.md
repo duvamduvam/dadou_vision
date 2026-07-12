@@ -19,3 +19,13 @@ déambulation" (cf. `../dadou_robot_ros/docs/etude-declenchement-conversation.md
 - **Calibration distance** (hauteur de silhouette `/vision/person_box` ->
   mètres, à lancer dans le conteneur vision) :
   `conf/scripts/calibre-distance.sh <distance_en_m> [dossier_de_sortie]`.
+
+## Personnalités de Didier (lot D3)
+
+Trois personnalités commutables (`vision/ai/personas.py`, brouillons
+d'atelier du 2026-07-13 à valider avec David) : `bougon` (défaut, config
+`chat_persona`), `naif`, `vantard` — socle commun (robot assumé, complice
+des enfants, esquives par opinions absurdes) + variante du jour. Changement
+à chaud (nouvelle session de conversation) :
+`ros2 topic pub --once persona robot_interfaces/msg/StringTime "{msg: 'naif'}"`
+— ou les boutons « Personnalité » de la console web côté robot.

@@ -183,3 +183,36 @@ def test_client_factory_called_lazily_and_only_once(tmp_path):
     client.completions._deltas = ["b"]
     list(brain.stream_reply("deux"))
     assert build_count == 1  # pas reconstruit au deuxième tour (mémoïsé)
+
+
+# --------------------------------------------------------------------------
+# reconfigure() : changement de personnalité à chaud (lot D3, cf.
+# vision.ai.personas et le topic `persona` de chat_node) — nouveau prompt ET
+# nouvelle session ChatDB, les deux ensemble (un historique hérité donnerait
+# un Didier schizophrène, cf. docstring de reconfigure).
+# --------------------------------------------------------------------------
+
+def test_reconfigure_change_le_prompt_et_ouvre_une_nouvelle_session(tmp_path):
+    _configure_test_db(tmp_path)
+    client = FakeClient(["Oui."])
+
+    brain = StreamingBrain(
+        model="anthropic/claude-haiku-4.5",
+        base_url="https://openrouter.ai/api/v1",
+        system_prompt="PROMPT BOUGON",
+        client_factory=lambda: client,
+    )
+    list(brain.stream_reply("premier tour, ancien personnage"))
+
+    brain.reconfigure("PROMPT NAIF")
+    list(brain.stream_reply("second tour, nouveau personnage"))
+
+    call = client.completions.last_call
+    # Nouveau prompt envoyé...
+    assert call["messages"][0] == {"role": "system", "content": "PROMPT NAIF"}
+    # ...et historique REPARTI À NEUF : l'échange de l'ancien personnage ne
+    # doit pas figurer dans le contexte du nouveau (system + user courant
+    # seulement).
+    contents = [m["content"] for m in call["messages"]]
+    assert "premier tour, ancien personnage" not in contents
+    assert "second tour, nouveau personnage" in contents

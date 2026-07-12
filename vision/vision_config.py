@@ -131,6 +131,13 @@ config = {
     # plutôt que des clés de config éclatées, pour rester la source unique de
     # vérité si VadConfig gagne de nouveaux champs un jour.
     "chat_vad": VadConfig(),
+
+    # Personnalité de Didier au démarrage (vision/ai/personas.py, lot D3 —
+    # atelier du 2026-07-13) : « bougon » = la plus proche du registre
+    # « gouaille de rue » déjà validé sur le proto du 10/07, les deux autres
+    # variantes ("naif", "vantard") sont l'expérience à mener en conditions
+    # réelles. Commutable à chaud via le topic `persona` (console web).
+    "chat_persona": "bougon",
 }
 
 WAKE_UP_WORD = config["wake_up_word"]

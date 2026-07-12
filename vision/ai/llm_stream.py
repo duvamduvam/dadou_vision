@@ -52,6 +52,25 @@ class StreamingBrain:
         # add_user_text/add_system_text).
         self._history_entry = ChatDB.create({})
 
+    def reconfigure(self, system_prompt: str) -> None:
+        """Change le system prompt ET ouvre une nouvelle session ChatDB —
+        utilisé par le changement de personnalité à chaud (topic `persona`,
+        cf. vision.nodes.chat_node et vision.ai.personas). Les deux vont
+        ensemble : garder l'historique d'un personnage en changeant de prompt
+        donnerait un Didier schizophrène (l'ancien tempérament resterait dans
+        le contexte envoyé au LLM).
+
+        Thread-safety (même analyse que _animation_state dans chat_node) :
+        appelé depuis le thread rclpy.spin (callback topic) pendant que
+        stream_reply peut tourner dans le thread de conversation — deux
+        affectations de références, atomiques sous le GIL, jamais de valeur
+        corrompue. Pire cas si un tour est EN COURS au moment du switch : sa
+        réplique finale est consignée dans la nouvelle session ChatDB (un
+        message orphelin dans l'historique du nouveau personnage) — bénin, et
+        le tour SUIVANT repart proprement sur le nouveau prompt."""
+        self._system_prompt = system_prompt
+        self._history_entry = ChatDB.create({})
+
     def _get_client(self):
         """Construit le client OpenAI (SDK officiel, pointé vers OpenRouter
         via base_url) au premier besoin réel — jamais au constructeur, pour

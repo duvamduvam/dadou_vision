@@ -63,8 +63,7 @@ from robot_interfaces.msg import StringTime
 
 from dadou_utils_ros.utils_static import ANIMATION, ANIMATION_STATE, FACE
 
-from vision.ai import arbitration
-from vision.ai.ai_static import realtime_instructions
+from vision.ai import arbitration, personas
 from vision.ai.conversation import ConversationEngine
 from vision.ai.llm_stream import StreamingBrain
 from vision.ai.performance import RosMessage
@@ -74,7 +73,8 @@ from vision.audio.beeps import build_thinking_beeps
 from vision.audio.mic import MicCapture
 from vision.audio.playback import AudioPlayer
 from vision.audio.vad import EnergyVad
-from vision.nodes._chat_wiring import default_chat_parameters, ros_message_to_string_time_kwargs
+from vision.nodes._chat_wiring import (decode_persona_command, default_chat_parameters,
+                                       ros_message_to_string_time_kwargs)
 from vision.vision_config import config, get_secret
 
 # Durée d'une trame micro (ms) : DOIT être identique côté MicCapture (qui
@@ -120,6 +120,14 @@ SHUTDOWN_JOIN_TIMEOUT_S = 5.0
 # la voix Piper restent chargés — la reprise est instantanée).
 CHAT_CMD_TOPIC = "chat"
 
+# Topic de changement de personnalité à chaud (lot D3, atelier persona du
+# 2026-07-13 — cf. vision.ai.personas et dadou_robot_ros/docs/
+# etude-declenchement-conversation.md §5.4) : payload = nom de variante
+# ("bougon"/"naif"/"vantard"), même souplesse de décodage que le toggle
+# `chat` (JSON ou brut, cf. _chat_wiring.decode_persona_command). Consommé
+# depuis la console web (whitelist technique) et, à terme, la télécommande.
+PERSONA_TOPIC = "persona"
+
 # Topic d'état du chat (lot D0 outillage, cf. dadou_robot_ros/docs/
 # etude-declenchement-conversation.md §6.1/§6.2) — expose listening/thinking/
 # speaking/off pour la régie, le télédiagnostic et le futur engagement_node
@@ -157,6 +165,7 @@ class ChatNode(Node):
         self.declare_parameter("out_device", defaults["out_device"])
         self.declare_parameter("refresh_ms", defaults["refresh_ms"])
         self.declare_parameter("beep_seconds", defaults["beep_seconds"])
+        self.declare_parameter("persona", defaults["persona"])
 
         llm_model = self.get_parameter("llm_model").value
         llm_base_url = self.get_parameter("llm_base_url").value
@@ -166,6 +175,17 @@ class ChatNode(Node):
         out_device = self.get_parameter("out_device").value
         refresh_ms = int(self.get_parameter("refresh_ms").value)
         beep_seconds = float(self.get_parameter("beep_seconds").value)
+        persona_name = str(self.get_parameter("persona").value)
+
+        # --- Personnalité de démarrage : validée ICI, échec de démarrage
+        # EXPLICITE sur un nom inconnu (une faute de frappe dans un launch/
+        # YAML doit se voir tout de suite, pas au premier tour de parole
+        # avec un Didier sans personnage) -------------------------------------
+        try:
+            persona_prompt = personas.compose_system_prompt(persona_name)
+        except ValueError as exc:
+            self.get_logger().error(f"Paramètre persona invalide : {exc}")
+            raise ChatStartupError("personnalité inconnue") from exc
 
         # --- Secret LLM : vérifié ICI, pas laissé au premier appel paresseux
         # de StreamingBrain (cf. constante LLM_API_KEY_NAME) ------------------
@@ -211,9 +231,12 @@ class ChatNode(Node):
 
         # --- Cerveau LLM streamé (OpenRouter) -----------------------------
         try:
+            # system_prompt = contrat technique + socle + personnalité (lot
+            # D3, cf. vision.ai.personas — realtime_instructions() seul ne
+            # portait aucun personnage), recomposé à chaud par _on_persona.
             brain = StreamingBrain(
                 model=llm_model, base_url=llm_base_url,
-                api_key_name=LLM_API_KEY_NAME, system_prompt=realtime_instructions(),
+                api_key_name=LLM_API_KEY_NAME, system_prompt=persona_prompt,
             )
         except Exception as exc:  # noqa: BLE001
             self.get_logger().error(
@@ -289,12 +312,19 @@ class ChatNode(Node):
         )
         self._mic = mic
         self._player = player
+        # Gardé pour le changement de personnalité à chaud (_on_persona ->
+        # brain.reconfigure) ; persona courant mémorisé pour dédupliquer
+        # (re-cliquer le bouton déjà actif sur la console ne doit pas
+        # réinitialiser la session de conversation en cours).
+        self._brain = brain
+        self._persona = persona_name
 
         # --- Mode interactif : ON au démarrage (lancer le node = vouloir la
         # conversation), basculable à chaud via le topic CHAT_CMD_TOPIC -----
         self._enabled = threading.Event()
         self._enabled.set()
         self.create_subscription(StringTime, CHAT_CMD_TOPIC, self._on_chat_cmd, 10)
+        self.create_subscription(StringTime, PERSONA_TOPIC, self._on_persona, 10)
 
         # --- Arbitrage amont (2026-07-12, cf. docstring de module POURQUOI) :
         # None = jamais reçu (topic ANIMATION_STATE absent ou robot pas encore
@@ -337,9 +367,11 @@ class ChatNode(Node):
 
         self.get_logger().info(
             f"chat démarré (llm_model={llm_model}, whisper_model={whisper_model}, "
-            f"mic_device={mic_device}, out_device={out_device}) -> topics "
-            f"{FACE}/{ANIMATION}, toggle sur '{CHAT_CMD_TOPIC}' (on/off), "
-            f"état publié sur '{CHAT_STATE_TOPIC}' (latché)"
+            f"mic_device={mic_device}, out_device={out_device}, "
+            f"persona={persona_name}) -> topics {FACE}/{ANIMATION}, toggle sur "
+            f"'{CHAT_CMD_TOPIC}' (on/off), persona sur '{PERSONA_TOPIC}' "
+            f"({'/'.join(personas.persona_names())}), état publié sur "
+            f"'{CHAT_STATE_TOPIC}' (latché)"
         )
 
     def _on_chat_cmd(self, ros_msg):
@@ -366,6 +398,32 @@ class ChatNode(Node):
             self.get_logger().info("chat OFF : mode interactif désactivé (micro coupé)")
         else:
             self.get_logger().warning(f"commande chat inconnue : {raw!r}")
+
+    def _on_persona(self, ros_msg):
+        """Changement de personnalité à chaud (lot D3, cf. vision.ai.personas) :
+        recompose le system prompt et ouvre une NOUVELLE session de
+        conversation (brain.reconfigure — garder l'historique de l'ancien
+        personnage donnerait un Didier schizophrène). Nom inconnu = warning
+        avec la liste des variantes, jamais un crash (même philosophie que la
+        commande chat inconnue ci-dessus). Tourne dans le thread rclpy.spin
+        pendant que le thread de conversation peut être en plein tour :
+        bénin, cf. docstring de StreamingBrain.reconfigure (pire cas = la
+        réplique en cours consignée dans la nouvelle session)."""
+        name = decode_persona_command(ros_msg.msg)
+        if name == self._persona:
+            # Re-clic du bouton déjà actif sur la console : ne PAS réinitialiser
+            # la session en cours pour rien.
+            self.get_logger().info(f"persona {name!r} déjà active — rien à faire")
+            return
+        try:
+            prompt = personas.compose_system_prompt(name)
+        except ValueError as exc:
+            self.get_logger().warning(f"commande persona refusée : {exc}")
+            return
+        self._brain.reconfigure(prompt)
+        self._persona = name
+        self.get_logger().info(
+            f"persona changée : {name!r} (nouvelle session de conversation)")
 
     def _on_animation_state(self, ros_msg):
         """Callback du topic ANIMATION_STATE (latché, publié par

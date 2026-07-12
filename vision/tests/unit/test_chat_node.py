@@ -11,7 +11,8 @@ QUOI : vision/nodes/chat_node.py importe rclpy en tête de module (comme tous
        vision.nodes.chat_node.
 """
 from vision.ai.performance import RosMessage
-from vision.nodes._chat_wiring import default_chat_parameters, ros_message_to_string_time_kwargs
+from vision.nodes._chat_wiring import (decode_persona_command, default_chat_parameters,
+                                        ros_message_to_string_time_kwargs)
 from vision.vision_config import config
 
 
@@ -67,13 +68,41 @@ def test_default_chat_parameters_reprend_la_config_unique():
     assert defaults["out_device"] == config["chat_out_device"]
     assert defaults["refresh_ms"] == config["chat_animation_refresh_ms"]
     assert defaults["beep_seconds"] == config["chat_beep_seconds"]
+    assert defaults["persona"] == config["chat_persona"]
 
 
 def test_default_chat_parameters_couvre_exactement_les_parametres_ros():
-    # Fige la liste des 8 paramètres ROS déclarés par ChatNode.__init__ : un
+    # Fige la liste des 9 paramètres ROS déclarés par ChatNode.__init__ : un
     # ajout/retrait de paramètre ROS doit être visible ici en revue, pas
-    # découvert au runtime sur le robot.
+    # découvert au runtime sur le robot. ("persona" ajouté au lot D3,
+    # atelier du 2026-07-13.)
     assert set(default_chat_parameters().keys()) == {
         "llm_model", "llm_base_url", "whisper_model", "piper_voice",
-        "mic_device", "out_device", "refresh_ms", "beep_seconds",
+        "mic_device", "out_device", "refresh_ms", "beep_seconds", "persona",
     }
+
+
+# ---------------------------------------------------------------------------
+# decode_persona_command (lot D3 : topic `persona`, changement de
+# personnalité à chaud)
+# ---------------------------------------------------------------------------
+
+def test_decode_persona_command_brut_et_json():
+    # La console web envoie du brut, un `ros2 topic pub` de débogage envoie
+    # souvent du JSON avec guillemets : les deux doivent donner le même nom.
+    assert decode_persona_command("bougon") == "bougon"
+    assert decode_persona_command('"bougon"') == "bougon"
+
+
+def test_decode_persona_command_normalise_casse_et_espaces():
+    # « Bougon » tapé à la main dans un ros2 topic pub doit matcher la clé
+    # ASCII minuscule de vision.ai.personas.
+    assert decode_persona_command("  Bougon ") == "bougon"
+    assert decode_persona_command('" NAIF"') == "naif"
+
+
+def test_decode_persona_command_ne_valide_pas():
+    # La validation appartient à personas.compose_system_prompt (le node
+    # loggue un warning sur ValueError) : ici un nom inconnu ressort
+    # normalisé, jamais une exception.
+    assert decode_persona_command("grincheux") == "grincheux"

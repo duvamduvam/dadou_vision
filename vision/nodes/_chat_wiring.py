@@ -20,6 +20,7 @@ POURQUOI pas dans vision/ai/performance.py : performance.py traduit déjà
 """
 from __future__ import annotations
 
+import json
 from typing import Any, Dict
 
 from vision.ai.performance import RosMessage
@@ -61,4 +62,22 @@ def default_chat_parameters() -> Dict[str, Any]:
         "out_device": config["chat_out_device"],
         "refresh_ms": config["chat_animation_refresh_ms"],
         "beep_seconds": config["chat_beep_seconds"],
+        "persona": config["chat_persona"],
     }
+
+
+def decode_persona_command(raw) -> str:
+    """Décode le payload du topic `persona` (lot D3, changement de
+    personnalité à chaud) en nom de variante normalisé : JSON toléré comme
+    brut (même souplesse que le toggle `chat`, cf. ChatNode._on_chat_cmd —
+    la console web envoie du brut, un `ros2 topic pub` de débogage envoie
+    souvent du JSON avec guillemets), espaces rognés, minuscules forcées
+    (les clés de vision.ai.personas sont en minuscules ASCII : « Bougon »
+    tapé à la main doit matcher "bougon"). La VALIDATION (nom connu ou pas)
+    reste à personas.compose_system_prompt — ici on normalise la chaîne,
+    on ne connaît pas la liste des variantes."""
+    try:
+        value = json.loads(raw)
+    except (ValueError, TypeError):
+        value = raw
+    return str(value).strip().lower()
