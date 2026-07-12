@@ -128,6 +128,12 @@ CHAT_CMD_TOPIC = "chat"
 # depuis la console web (whitelist technique) et, à terme, la télécommande.
 PERSONA_TOPIC = "persona"
 
+# Topic d'état de la personnalité ACTIVE (2026-07-13, surbrillance console) :
+# latché comme chat_state, publie le nom réellement en vigueur (y compris le
+# défaut au démarrage) — la console surligne depuis CET état, pas depuis le
+# dernier clic (un clic refusé/dédupliqué ne doit pas s'afficher actif).
+PERSONA_STATE_TOPIC = "persona_state"
+
 # Topic d'état du chat (lot D0 outillage, cf. dadou_robot_ros/docs/
 # etude-declenchement-conversation.md §6.1/§6.2) — expose listening/thinking/
 # speaking/off pour la régie, le télédiagnostic et le futur engagement_node
@@ -297,6 +303,10 @@ class ChatNode(Node):
         self._chat_state_pub = self.create_publisher(
             StringTime, CHAT_STATE_TOPIC,
             QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        # Même QoS latchée pour la personnalité active (cf. PERSONA_STATE_TOPIC).
+        self._persona_state_pub = self.create_publisher(
+            StringTime, PERSONA_STATE_TOPIC,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 
         # --- Orchestrateur (logique déjà testée hors ROS) ------------------
         self._engine = ConversationEngine(
@@ -318,6 +328,10 @@ class ChatNode(Node):
         # réinitialiser la session de conversation en cours).
         self._brain = brain
         self._persona = persona_name
+        # État initial de la personnalité publié tout de suite (latché) : un
+        # abonné tardif (console) doit voir le défaut « bougon » actif dès le
+        # démarrage, pas attendre le premier changement.
+        self._publish_persona_state()
 
         # --- Mode interactif : ON au démarrage (lancer le node = vouloir la
         # conversation), basculable à chaud via le topic CHAT_CMD_TOPIC -----
@@ -422,8 +436,16 @@ class ChatNode(Node):
             return
         self._brain.reconfigure(prompt)
         self._persona = name
+        self._publish_persona_state()
         self.get_logger().info(
             f"persona changée : {name!r} (nouvelle session de conversation)")
+
+    def _publish_persona_state(self) -> None:
+        """Publie la personnalité ACTIVE sur PERSONA_STATE_TOPIC (latché) —
+        msg brut comme chat_state (pas de json.dumps : contrat simple, un
+        abonné lit `msg` directement)."""
+        self._persona_state_pub.publish(
+            StringTime(msg=self._persona, time=0, anim=False))
 
     def _on_animation_state(self, ros_msg):
         """Callback du topic ANIMATION_STATE (latché, publié par
