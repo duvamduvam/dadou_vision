@@ -36,6 +36,13 @@ Cerveau perceptif du robot de théâtre Didier, sur Pi 5 « vision » (alias ssh
   via OpenCV (15 trames de chauffe — auto-exposition lente), puis `docker restart`
   restaure le pipeline nominal. Depuis le PC :
   `ssh v 'bash /home/pi/ros2_ws/src/vision/conf/scripts/photo-camera.sh' && scp v:photo-camera.jpg .`
+- **Perception distance pour le suivi roues (2026-07-11, validé sim côté robot)** :
+  person_tracker publie AUSSI `/vision/person_box` (PointStamped : x=azimut,
+  y=HAUTEUR de silhouette [0..1] — proxy de distance monoculaire, lissée EMA,
+  z=confiance ; silence = personne perdue). Le topic historique `/vision/person`
+  reste GELÉ (gaze_follower). Consommé par person_follower (dadou_robot_ros).
+  ⚠️ PAS ENCORE DÉPLOYÉ sur le Pi vision (éteint au moment du déploiement) :
+  scp target_picker.py + person_tracker_node.py + test + sentinelle CHANGE.
 - **Retour vidéo console de régie (2026-07-11, validé réel)** : person_tracker
   republie ses trames en JPEG (`camera/image_raw/compressed`, ~5 i/s, qualité 70,
   paramètre `video_fps`, 0 = off) — seule source d'images possible, la webcam lui

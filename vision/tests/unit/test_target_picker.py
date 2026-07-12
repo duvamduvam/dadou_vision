@@ -35,17 +35,18 @@ def test_bbox_centered_maps_to_zero_azimuth_and_elevation():
     picker = TargetPicker()
     result = picker.update([_det(45, 45, 55, 55, score=0.8)], IMG_W, IMG_H)
     assert result is not None
-    azimuth, elevation, confidence = result
+    azimuth, elevation, confidence, height = result
     assert azimuth == pytest.approx(0.0)
     assert elevation == pytest.approx(0.0)
     assert confidence == pytest.approx(0.8)
+    assert height == pytest.approx(0.1)  # boîte de 10 px de haut / image de 100
 
 
 def test_bbox_at_left_edge_maps_to_azimuth_minus_one():
     # Boîte collée au bord GAUCHE de l'image (x1=x2=0, cas dégénéré mais
     # valide) -> azimut = -1 (bord gauche vu de la caméra, cf. contrat).
     picker = TargetPicker()
-    azimuth, _, _ = picker.update([_det(0, 45, 0, 55)], IMG_W, IMG_H)
+    azimuth, _, _, _ = picker.update([_det(0, 45, 0, 55)], IMG_W, IMG_H)
     assert azimuth == pytest.approx(-1.0)
 
 
@@ -53,19 +54,19 @@ def test_bbox_at_right_edge_maps_to_azimuth_plus_one():
     # Boîte collée au bord DROIT (x1=x2=largeur image) -> azimut = +1, SANS
     # mirroring (contrat ARCHITECTURE.md : +1 = bord droit VU DE LA CAMÉRA).
     picker = TargetPicker()
-    azimuth, _, _ = picker.update([_det(IMG_W, 45, IMG_W, 55)], IMG_W, IMG_H)
+    azimuth, _, _, _ = picker.update([_det(IMG_W, 45, IMG_W, 55)], IMG_W, IMG_H)
     assert azimuth == pytest.approx(1.0)
 
 
 def test_bbox_at_top_maps_to_elevation_plus_one():
     picker = TargetPicker()
-    _, elevation, _ = picker.update([_det(45, 0, 55, 0)], IMG_W, IMG_H)
+    _, elevation, _, _ = picker.update([_det(45, 0, 55, 0)], IMG_W, IMG_H)
     assert elevation == pytest.approx(1.0)
 
 
 def test_bbox_at_bottom_maps_to_elevation_minus_one():
     picker = TargetPicker()
-    _, elevation, _ = picker.update([_det(45, IMG_H, 55, IMG_H)], IMG_W, IMG_H)
+    _, elevation, _, _ = picker.update([_det(45, IMG_H, 55, IMG_H)], IMG_W, IMG_H)
     assert elevation == pytest.approx(-1.0)
 
 
@@ -78,17 +79,17 @@ def test_first_measurement_after_reset_is_not_smoothed():
     # être la valeur BRUTE, pas mélangée à un état inexistant (pas de ramping
     # artificiel depuis 0 quand une personne apparaît sur le bord de l'image).
     picker = TargetPicker(ema_alpha=0.4)
-    azimuth, _, _ = picker.update([_det(0, 45, 20, 55)], IMG_W, IMG_H)  # centre x=10 -> azimut -0.8
+    azimuth, _, _, _ = picker.update([_det(0, 45, 20, 55)], IMG_W, IMG_H)  # centre x=10 -> azimut -0.8
     assert azimuth == pytest.approx(-0.8)
 
 
 def test_ema_smooths_toward_new_value_without_jumping_to_it():
     picker = TargetPicker(ema_alpha=0.4)
     # Frame 1 : centre x=25 -> azimut brut -0.5.
-    az1, _, _ = picker.update([_det(20, 45, 30, 55)], IMG_W, IMG_H)
+    az1, _, _, _ = picker.update([_det(20, 45, 30, 55)], IMG_W, IMG_H)
     assert az1 == pytest.approx(-0.5)
     # Frame 2 : la même personne s'est déplacée, centre x=75 -> azimut brut +0.5.
-    az2, _, _ = picker.update([_det(70, 45, 80, 55)], IMG_W, IMG_H)
+    az2, _, _, _ = picker.update([_det(70, 45, 80, 55)], IMG_W, IMG_H)
     # EMA attendu : 0.4*0.5 + 0.6*(-0.5) = -0.1 — ni la valeur brute (+0.5),
     # ni la valeur précédente (-0.5) : preuve que le lissage a bien lieu.
     assert az2 == pytest.approx(-0.1)
@@ -118,7 +119,7 @@ def test_next_person_after_loss_starts_fresh_not_blended_with_ghost():
     # Personne B apparaît à l'opposé de l'image (azimut brut +0.5) : si l'état
     # n'avait pas été réinitialisé, le résultat serait mélangé à -0.5 (comme
     # dans test_ema_smooths_toward_new_value_without_jumping_to_it : -0.1).
-    azimuth, _, _ = picker.update([_det(70, 45, 80, 55)], IMG_W, IMG_H)
+    azimuth, _, _, _ = picker.update([_det(70, 45, 80, 55)], IMG_W, IMG_H)
     assert azimuth == pytest.approx(0.5)
 
 
@@ -145,6 +146,39 @@ def test_adherence_prefers_detection_close_to_previous_target():
     det_a_near_previous = _det(40, 45, 60, 55, score=0.5)  # centre x=50 -> azimut 0
     det_b_far_bigger = _det(70, 40, 95, 60, score=0.5)     # centre x=82.5 -> azimut 0.65
 
-    azimuth, _, _ = picker.update([det_a_near_previous, det_b_far_bigger], IMG_W, IMG_H)
+    azimuth, _, _, _ = picker.update([det_a_near_previous, det_b_far_bigger], IMG_W, IMG_H)
 
     assert azimuth == pytest.approx(0.0)  # A choisie, pas B (0.65)
+
+
+# --------------------------------------------------------------------------
+# Hauteur de silhouette (proxy de distance pour le suivi roues, 2026-07-11).
+# --------------------------------------------------------------------------
+
+def test_height_ratio_proche_et_loin():
+    # Personne PROCHE : boîte qui remplit presque l'image en hauteur.
+    picker = TargetPicker()
+    target = picker.update([_det(40, 5, 60, 95)], IMG_W, IMG_H)
+    assert target.height == pytest.approx(0.9)
+
+    # Personne LOIN : petite silhouette (nouveau picker : pas de lissage hérité).
+    picker = TargetPicker()
+    target = picker.update([_det(45, 40, 55, 60)], IMG_W, IMG_H)
+    assert target.height == pytest.approx(0.2)
+
+
+def test_height_est_lissee_par_ema_comme_l_azimut():
+    picker = TargetPicker(ema_alpha=0.4)
+    t1 = picker.update([_det(40, 10, 60, 90)], IMG_W, IMG_H)  # hauteur brute 0.8
+    assert t1.height == pytest.approx(0.8)  # 1re mesure : brute (pas de ramping depuis 0)
+    t2 = picker.update([_det(40, 30, 60, 70)], IMG_W, IMG_H)  # hauteur brute 0.4
+    # EMA : 0.4*0.4 + 0.6*0.8 = 0.64 — ni brute ni précédente.
+    assert t2.height == pytest.approx(0.64)
+
+
+def test_height_bornee_boite_aberrante():
+    # y2 < y1 (boîte inversée) -> 0, pas de valeur négative qui ferait
+    # reculer le robot sur une détection corrompue.
+    picker = TargetPicker()
+    target = picker.update([_det(40, 80, 60, 20)], IMG_W, IMG_H)
+    assert target.height == pytest.approx(0.0)

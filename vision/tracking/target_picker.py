@@ -23,11 +23,30 @@ Contrat de sortie (ARCHITECTURE.md) :
       mirroring introduit par erreur ferait tourner la tête du mauvais côté.
   y = élévation normalisée [-1..1], +1 = haut de l'image.
   z = confiance [0..1] de la détection retenue (score brut du backend, PAS
-      lissé — seuls x et y sont lissés par EMA, cf. plus bas).
+      lissé — seuls azimut/élévation/hauteur sont lissés par EMA, cf. plus bas).
+
+Extension 2026-07-11 (suivi roues, person_follower côté dadou_robot_ros) :
+  height = hauteur de la boîte / hauteur de l'image, [0..1], lissée par EMA.
+      C'est le PROXY DE DISTANCE d'une caméra monoculaire : une personne
+      debout proche remplit l'image (height élevé), loin elle est petite.
+      La HAUTEUR plutôt que l'aire : l'aire varie avec la pose (bras écartés),
+      la hauteur d'une personne debout ne varie qu'avec la distance.
+      Publiée sur le topic /vision/person_box (le topic /vision/person
+      historique reste inchangé — contrat gelé consommé par gaze_follower).
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import NamedTuple, Optional
+
+
+class Target(NamedTuple):
+    """Cible retenue pour UNE frame — azimut/élévation/hauteur lissés EMA,
+    confiance brute. NamedTuple : les consommateurs nomment les champs
+    (result.azimuth) plutôt que de compter les positions."""
+    azimuth: float
+    elevation: float
+    confidence: float
+    height: float
 
 
 def _azimuth(x1: float, x2: float, image_width: float) -> float:
@@ -51,6 +70,15 @@ def _elevation(y1: float, y2: float, image_height: float) -> float:
     cy = (y1 + y2) / 2.0
     elevation = 1.0 - 2.0 * (cy / image_height)
     return max(-1.0, min(1.0, elevation))
+
+
+def _height_ratio(y1: float, y2: float, image_height: float) -> float:
+    """Hauteur de boîte / hauteur d'image, borné [0..1] — le proxy de distance
+    (cf. docstring de module). Borné pour les boîtes aberrantes (y2 < y1 ou
+    dépassant l'image), comme _area_ratio."""
+    if image_height <= 0:
+        return 0.0
+    return max(0.0, min(1.0, (y2 - y1) / image_height))
 
 
 def _area_ratio(x1: float, y1: float, x2: float, y2: float,
@@ -102,6 +130,7 @@ class TargetPicker:
     def _reset_state(self) -> None:
         self._ema_azimuth: Optional[float] = None
         self._ema_elevation: Optional[float] = None
+        self._ema_height: Optional[float] = None
         # Azimut BRUT (pas lissé) de la dernière cible retenue : sert de
         # référence à l'adhérence, comparé à l'azimut BRUT des nouvelles
         # détections (comparer du brut à du brut, pas du brut à du lissé).
@@ -117,20 +146,22 @@ class TargetPicker:
         self._reset_state()
 
     def update(self, detections: list, image_width: float,
-               image_height: float) -> Optional[tuple]:
-        """Traite les détections d'UNE frame. Retourne (azimut, élévation,
-        confiance) lissés, ou None si aucune détection (silence = personne
-        perdue, cf. contrat ARCHITECTURE.md — c'est à l'appelant [le node] de
-        ne rien publier dans ce cas, ce module se contente de renvoyer None)."""
+               image_height: float) -> Optional[Target]:
+        """Traite les détections d'UNE frame. Retourne un Target (azimut,
+        élévation, hauteur lissés + confiance brute), ou None si aucune
+        détection (silence = personne perdue, cf. contrat ARCHITECTURE.md —
+        c'est à l'appelant [le node] de ne rien publier dans ce cas, ce module
+        se contente de renvoyer None)."""
         if not detections:
             self.reset()
             return None
 
         best_weight = None
-        best = None  # (azimuth_brut, elevation_brut, score)
+        best = None  # (azimuth_brut, elevation_brut, score, height_brut)
         for det in detections:
             azimuth = _azimuth(det.x1, det.x2, image_width)
             elevation = _elevation(det.y1, det.y2, image_height)
+            height = _height_ratio(det.y1, det.y2, image_height)
             area_ratio = _area_ratio(det.x1, det.y1, det.x2, det.y2,
                                       image_width, image_height)
             weight = area_ratio * det.score
@@ -139,9 +170,9 @@ class TargetPicker:
                 weight *= self._adherence_bonus
             if best_weight is None or weight > best_weight:
                 best_weight = weight
-                best = (azimuth, elevation, det.score)
+                best = (azimuth, elevation, det.score, height)
 
-        azimuth, elevation, confidence = best
+        azimuth, elevation, confidence, height = best
 
         # EMA : pas de valeur précédente (premier calcul après un reset) ->
         # on part directement de la mesure brute, ne PAS lisser artificiellement
@@ -155,6 +186,13 @@ class TargetPicker:
             elevation if self._ema_elevation is None
             else self._ema_alpha * elevation + (1.0 - self._ema_alpha) * self._ema_elevation
         )
+        # Même lissage pour la hauteur : c'est elle qui commandera la vitesse
+        # linéaire du suivi roues — le bruit frame à frame de la bbox ne doit
+        # pas se transformer en à-coups d'avance/recul.
+        self._ema_height = (
+            height if self._ema_height is None
+            else self._ema_alpha * height + (1.0 - self._ema_alpha) * self._ema_height
+        )
         self._last_raw_azimuth = azimuth
 
-        return (self._ema_azimuth, self._ema_elevation, confidence)
+        return Target(self._ema_azimuth, self._ema_elevation, confidence, self._ema_height)

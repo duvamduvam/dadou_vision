@@ -130,6 +130,13 @@ class PersonTrackerNode(Node):
 
         self._picker = TargetPicker(ema_alpha=ema_alpha)
         self._publisher = self.create_publisher(PointStamped, "/vision/person", 10)
+        # Suivi roues (2026-07-11) : même cible, contrat ÉTENDU sur un topic
+        # SÉPARÉ — /vision/person reste gelé (x=azimut, y=élévation,
+        # z=confiance, consommé par gaze_follower), /vision/person_box porte
+        # x=azimut, y=HAUTEUR de silhouette [0..1] (proxy de distance,
+        # cf. target_picker), z=confiance. Consommé par person_follower
+        # (dadou_robot_ros). Mêmes règles : silence = personne perdue.
+        self._box_publisher = self.create_publisher(PointStamped, "/vision/person_box", 10)
 
         # Retour vidéo (cf. constantes VIDEO_*) : publisher créé SEULEMENT si
         # video_fps > 0 — même garantie structurelle que drive_enabled côté
@@ -190,14 +197,25 @@ class PersonTrackerNode(Node):
             # Silence = personne perdue (contrat ARCHITECTURE.md) : ne rien publier.
             return
 
-        azimuth, elevation, confidence = result
+        stamp = self.get_clock().now().to_msg()
+
         msg = PointStamped()
-        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.stamp = stamp
         msg.header.frame_id = CAMERA_FRAME_ID
-        msg.point.x = azimuth
-        msg.point.y = elevation
-        msg.point.z = confidence
+        msg.point.x = result.azimuth
+        msg.point.y = result.elevation
+        msg.point.z = result.confidence
         self._publisher.publish(msg)
+
+        # Contrat étendu pour le suivi roues (cf. création du publisher) :
+        # y = hauteur de silhouette, PAS l'élévation.
+        box_msg = PointStamped()
+        box_msg.header.stamp = stamp
+        box_msg.header.frame_id = CAMERA_FRAME_ID
+        box_msg.point.x = result.azimuth
+        box_msg.point.y = result.height
+        box_msg.point.z = result.confidence
+        self._box_publisher.publish(box_msg)
 
     def destroy_node(self):
         # Libère la caméra même si le node est détruit après une erreur avant
