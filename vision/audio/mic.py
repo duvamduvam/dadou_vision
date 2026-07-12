@@ -33,6 +33,26 @@ import numpy as np
 _BYTES_PER_SAMPLE = 2
 
 
+def frame_rms(frame: bytes) -> float:
+    """Niveau sonore RMS (racine de la moyenne des carrés) d'une trame S16_LE
+    mono — la mesure attendue par vision.audio.vad.EnergyVad.feed.
+
+    QUOI : fonction PURE extraite de MicCapture (qui l'expose en méthode liée
+           ci-dessous pour ne rien casser côté ConversationEngine, cf.
+           vision.ai.conversation._listen_for_utterance : self._mic.frame_rms(frame))
+           POURQUOI extraite (lot D0 outillage, cf. dadou_robot_ros/docs/
+           etude-declenchement-conversation.md §5.5/§7, D0 = mesures &
+           calibration) : vision.audio.vad_replay DOIT réutiliser EXACTEMENT
+           le même calcul que la prod (règle du projet, cf. CLAUDE.md
+           "la vérification doit exécuter le MÊME code que la prod") — une
+           fonction pure importable évite de dupliquer la formule dans l'outil
+           de rejeu, ce qui aurait pu diverger silencieusement de MicCapture."""
+    if not frame:
+        return 0.0
+    samples = np.frombuffer(frame, dtype=np.int16).astype(np.float64)
+    return float(np.sqrt(np.mean(samples ** 2)))
+
+
 class MicCapture:
     """Capture continue d'un micro ALSA via `arecord`, découpée en trames de
     taille fixe, avec un tampon de pré-roll (les N dernières trames)."""
@@ -113,12 +133,11 @@ class MicCapture:
         return data
 
     def frame_rms(self, frame: bytes) -> float:
-        """Niveau sonore RMS (racine de la moyenne des carrés) d'une trame
-        S16_LE mono — la mesure attendue par vision.audio.vad.EnergyVad.feed."""
-        if not frame:
-            return 0.0
-        samples = np.frombuffer(frame, dtype=np.int16).astype(np.float64)
-        return float(np.sqrt(np.mean(samples ** 2)))
+        """Méthode liée qui délègue à la fonction pure module-level
+        `frame_rms` ci-dessus (cf. son docstring POURQUOI) — conservée pour
+        ne rien changer côté appelants existants (self._mic.frame_rms(frame),
+        cf. vision.ai.conversation)."""
+        return frame_rms(frame)
 
     def preroll(self) -> bytes:
         """Contenu actuel du ring buffer, concaténé dans l'ordre chronologique

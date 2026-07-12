@@ -141,7 +141,8 @@ def _make_publish(timeline):
 
 
 def _make_engine(timeline, *, frames, vad_events, stt_text, brain_deltas,
-                  brain_raises=False, beeps=True):
+                  brain_raises=False, beeps=True, on_state=None,
+                  initial_state=None):
     """Assemble un ConversationEngine avec des fakes câblés sur la même
     timeline — factorise le câblage répété par les tests ci-dessous.
     L'appelant est responsable de _cleanup_beeps(engine) en fin de test.
@@ -159,6 +160,8 @@ def _make_engine(timeline, *, frames, vad_events, stt_text, brain_deltas,
         beeps_rate=BEEPS_RATE,
         refresh_ms=REFRESH_MS,
         dead_mic_backoff_s=0.0,
+        on_state=on_state,
+        initial_state=initial_state,
     )
 
 
@@ -457,3 +460,130 @@ def test_micro_coupe_volontairement_pas_de_restart_ni_warning(timeline, caplog):
     assert tags == ["mic_start"]  # uniquement le start initial du tour
     # Pas de warning « micro mort » : ce n'est pas un incident.
     assert not any(record.levelname == "WARNING" for record in caplog.records)
+
+
+# --------------------------------------------------------------------------
+# Topic d'état du chat (`on_state`, lot D0 outillage — cf.
+# dadou_robot_ros/docs/etude-declenchement-conversation.md §6.1/§6.2 : l'état
+# listening/thinking/speaking/off est consommé par la régie, le
+# télédiagnostic et le futur engagement_node). Dédup interne testée ici, pas
+# seulement câblée : c'est le contrat qui protège un abonné ROS d'un flot de
+# messages identiques (pause à 5 Hz, speaking republié par Sentence).
+# --------------------------------------------------------------------------
+
+def test_tour_complet_emet_la_sequence_d_etats_avec_dedup_speaking(timeline):
+    # Deux Sentences dans la réponse (cf. deltas) : "speaking" ne doit
+    # apparaître qu'UNE SEULE FOIS dans la séquence malgré les deux
+    # publications de speaking_start (dédup interne de _set_state).
+    frames, events = _speech_frames_and_events()
+    deltas = ['Salut. Comment ça va ? {"emotion": "neutral"}']
+    states = []
+
+    engine = _make_engine(
+        timeline, frames=frames, vad_events=events,
+        stt_text="salut", brain_deltas=deltas, on_state=states.append,
+    )
+    try:
+        result = engine.run_once()
+    finally:
+        _cleanup_beeps(engine)
+
+    assert result is True
+    assert states == ["listening", "thinking", "speaking", "listening"]
+
+
+def test_tour_abandonne_stt_inexploitable_n_emet_jamais_speaking(timeline):
+    frames, events = _speech_frames_and_events()
+    states = []
+
+    engine = _make_engine(
+        timeline, frames=frames, vad_events=events,
+        stt_text="a", brain_deltas=["ne doit jamais être utilisé"],
+        on_state=states.append,
+    )
+    try:
+        result = engine.run_once()
+    finally:
+        _cleanup_beeps(engine)
+
+    assert result is False
+    assert states == ["listening", "thinking", "listening"]
+    assert "speaking" not in states
+
+
+def test_callback_on_state_qui_leve_ne_casse_pas_le_tour(timeline, caplog):
+    # Un on_state qui plante à CHAQUE appel ne doit jamais empêcher le tour
+    # de se terminer normalement (try/except de _set_state) -- seule la
+    # notification d'état est perdue, jamais le tour de conversation.
+    frames, events = _speech_frames_and_events()
+    deltas = ['Salut. {"emotion": "neutral"}']
+
+    def on_state(_state):
+        raise RuntimeError("callback on_state cassé (test)")
+
+    engine = _make_engine(
+        timeline, frames=frames, vad_events=events,
+        stt_text="salut", brain_deltas=deltas, on_state=on_state,
+    )
+    try:
+        with caplog.at_level("WARNING", logger="vision.ai.conversation"):
+            result = engine.run_once()
+    finally:
+        _cleanup_beeps(engine)
+
+    assert result is True  # le tour est allé jusqu'au bout malgré le callback cassé
+    assert any("on_state" in record.message for record in caplog.records)
+
+
+def test_initial_state_emis_par_le_moteur_et_deduplique_au_premier_tour(timeline):
+    # L'état initial est émis PAR LE MOTEUR à la construction (chat_node lui
+    # passe initial_state="listening" pour que le topic latché ait une valeur
+    # avant même le premier tour) — et la dédup absorbe le "listening" que
+    # run_once() re-signale ensuite : UN SEUL "listening" en tête de séquence,
+    # jamais de doublon sur le topic. Fige aussi l'interdit de revue : c'est
+    # le constructeur qui amorce _last_state, pas un écrivain extérieur.
+    frames, events = _speech_frames_and_events()
+    deltas = ['Salut. {"emotion": "neutral"}']
+    states = []
+
+    engine = _make_engine(
+        timeline, frames=frames, vad_events=events,
+        stt_text="salut", brain_deltas=deltas, on_state=states.append,
+        initial_state="listening",
+    )
+    try:
+        assert states == ["listening"]  # émis dès la construction
+        result = engine.run_once()
+    finally:
+        _cleanup_beeps(engine)
+
+    assert result is True
+    assert states == ["listening", "thinking", "speaking", "listening"]
+
+
+def test_run_forever_pause_off_emis_une_seule_fois(timeline):
+    # Plusieurs itérations de la boucle d'attente (0,2 s) pendant la pause :
+    # "off" ne doit être notifié qu'UNE SEULE FOIS grâce à la dédup, pas à
+    # chaque tour de boucle.
+    engine = _make_engine(
+        timeline, frames=[b"f0"], vad_events=[None],
+        stt_text="jamais utilisé", brain_deltas=["jamais utilisé"],
+    )
+    states = []
+    engine._on_state = states.append
+    stop_event = threading.Event()
+    enabled = threading.Event()  # baissé = mode interactif désactivé
+
+    thread = threading.Thread(
+        target=engine.run_forever, args=(stop_event, enabled), daemon=True)
+    try:
+        thread.start()
+        time.sleep(0.5)  # laisse plusieurs cycles d'attente de 0,2 s tourner
+        stop_event.set()
+        thread.join(timeout=2.0)
+        assert not thread.is_alive()
+    finally:
+        stop_event.set()
+        _cleanup_beeps(engine)
+
+    assert states == ["off"]

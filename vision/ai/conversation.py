@@ -82,7 +82,9 @@ class ConversationEngine:
                  perf=None,
                  beeps_pcm: bytes = b"", beeps_rate: int = 22050,
                  refresh_ms: int = 15000,
-                 dead_mic_backoff_s: float = DEAD_MIC_BACKOFF_S):
+                 dead_mic_backoff_s: float = DEAD_MIC_BACKOFF_S,
+                 on_state: Optional[Callable[[str], None]] = None,
+                 initial_state: Optional[str] = None):
         self._mic = mic
         self._vad = vad
         self._stt = stt
@@ -90,6 +92,16 @@ class ConversationEngine:
         self._tts = tts
         self._player = player
         self._publish = publish
+        # Callback d'état optionnel (chat_node V2, lot D0 outillage) : expose
+        # listening/thinking/speaking/off pour la régie, le télédiagnostic et
+        # le futur engagement_node (cf. dadou_robot_ros/docs/
+        # etude-declenchement-conversation.md §6.2 -- IN_CONVERSATION a besoin
+        # de savoir si le chat écoute encore). None = personne n'écoute
+        # (comportement actuel inchangé, cf. _set_state ci-dessous).
+        self._on_state = on_state
+        # Dédup interne (cf. _set_state) : None au départ, aucun état n'a
+        # encore été vu.
+        self._last_state: Optional[str] = None
         # perf par défaut = le MODULE vision.ai.performance lui-même (ses
         # fonctions thinking/speaking_start/... sont utilisées comme
         # namespace) — un fake de test fournit un objet avec les mêmes noms
@@ -120,6 +132,35 @@ class ConversationEngine:
             from vision.audio.playback import write_wav_tempfile
             self._beeps_path = write_wav_tempfile(beeps_pcm, beeps_rate)
 
+        # État initial émis PAR LE MOTEUR à la construction (et non poussé de
+        # l'extérieur en écrivant _last_state, ce qui violerait la frontière
+        # de la brique pure) : un abonné ROS latché (chat_node publie en
+        # TRANSIENT_LOCAL) doit trouver une valeur dès la souscription, MÊME
+        # avant le premier tour — la dédup de _set_state absorbera ensuite le
+        # "listening" que run_once() re-signalera au démarrage du thread.
+        if initial_state is not None:
+            self._set_state(initial_state)
+
+    def _set_state(self, state: str) -> None:
+        """Notifie `on_state` d'un changement d'état ("listening"/"thinking"/
+        "speaking"/"off"), avec DÉDUPLICATION sur `_last_state` : nécessaire
+        car certains points d'émission sont appelés en boucle (la pause
+        toggle OFF de run_forever ré-attend à 0,2 s tant que le mode
+        interactif reste désactivé ; "speaking" est réémis à chaque Sentence,
+        cf. _handle_event) -- sans dédup, un abonné ROS recevrait un flot de
+        messages identiques pour rien. try/except : `on_state` finira par
+        publier sur un topic ROS (chat_node), un monde que cette brique pure
+        ne connaît pas -- un callback qui plante ne doit JAMAIS interrompre un
+        tour de conversation en cours, seulement perdre cette notification
+        d'état (log warning pour ne pas le perdre en silence)."""
+        if self._on_state is None or state == self._last_state:
+            return
+        self._last_state = state
+        try:
+            self._on_state(state)
+        except Exception:
+            logger.warning("Callback on_state en échec (état %r ignoré).", state, exc_info=True)
+
     def _publish_all(self, messages) -> None:
         """publish() ne prend qu'UN SEUL message à la fois (contrat du
         constructeur) ; les fonctions de vision.ai.performance renvoient des
@@ -139,6 +180,9 @@ class ConversationEngine:
             # Journalisée AVANT la synthèse : si le TTS plante, la trace dit
             # quand même ce que Didier ALLAIT dire (diagnostic en direct).
             logger.info("Didier : %s", event.text)
+            # "speaking" : dédup absorbe la répétition à CHAQUE Sentence d'un
+            # même tour (une réponse a en général plusieurs phrases).
+            self._set_state("speaking")
             # speaking_start republié à CHAQUE Sentence (pas seulement la
             # première) : sert de rafraîchissement — cf. commentaire
             # chat_animation_refresh_ms dans vision_config.py, l'animation
@@ -166,6 +210,7 @@ class ConversationEngine:
         d'abandon : flux micro mort, STT vide/trop court, ou erreur
         LLM/TTS (le spectacle continue, cf. docstring de module)."""
         self._mic.start()
+        self._set_state("listening")
 
         speech_bytes = self._listen_for_utterance()
         if speech_bytes is None:
@@ -197,6 +242,7 @@ class ConversationEngine:
         # STT renverra du texte exploitable).
         self._mic.stop()
         self._publish_all(self._perf.thinking())
+        self._set_state("thinking")
 
         if self._beeps_path is not None:
             # Fire-and-forget : les bips jouent PENDANT le transcribe()
@@ -216,6 +262,7 @@ class ConversationEngine:
             # tout le reste de la pause d'écoute suivante — visible sur scène.
             self._publish_all(self._perf.idle())
             self._mic.start()
+            self._set_state("listening")
             return False
 
         logger.info("STT : %r", text)
@@ -273,12 +320,14 @@ class ConversationEngine:
                 "Erreur pendant la génération/synthèse de la réponse — tour abandonné.")
             self._publish_all(self._perf.speaking_stop())
             self._mic.start()
+            self._set_state("listening")
             return False
 
         self._player.drain()
         self._publish_all(self._perf.speaking_stop())
         self._publish_all(self._perf.emotion(emotion_params))
         self._mic.start()
+        self._set_state("listening")
         return True
 
     def run_forever(self, stop_event: threading.Event,
@@ -304,6 +353,10 @@ class ConversationEngine:
                 # — on garantit ici qu'en pause, le micro est TOUJOURS coupé,
                 # quel que soit le chemin qui a rendu la main.
                 self._mic.stop()
+                # "off" : dédup absorbe la boucle d'attente (ré-émis à chaque
+                # itération de 0,2 s tant que la pause dure) -- un seul
+                # message part réellement vers on_state par pause.
+                self._set_state("off")
                 enabled.wait(timeout=0.2)
                 continue
             self.run_once()

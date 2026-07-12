@@ -39,6 +39,15 @@ POURQUOI le gate `vision.ai.arbitration` (ajouté 2026-07-12, étude
        repos) et retient le dernier état vu ; _publish() consulte
        arbitration.allow_message() avant chaque publication et retient un
        message si une séquence de spectacle a la main.
+POURQUOI CHAT_STATE_TOPIC est un nouveau topic (seule exception au "zéro
+       nouveau topic" ci-dessus, lot D0 outillage du chantier "conversation en
+       déambulation", dadou_robot_ros/docs/etude-declenchement-conversation.md
+       §6.1/§6.2/§7) : c'est de l'ÉTAT (ce que le chat observe de lui-même),
+       pas une commande d'actionneur -- rien à quoi le vocabulaire
+       FACE/ANIMATION du robot puisse correspondre. Publié en QoS TRANSIENT_
+       LOCAL (même piège documenté qu'ANIMATION_STATE plus bas) et SANS passer
+       par l'arbitrage (_publish_state, à la différence de _publish) : un état
+       n'entre jamais en conflit avec une séquence de spectacle.
 """
 import json
 import logging
@@ -110,6 +119,15 @@ SHUTDOWN_JOIN_TIMEOUT_S = 5.0
 # conversation EN COURS DE SPECTACLE sans tuer le node (le modèle whisper et
 # la voix Piper restent chargés — la reprise est instantanée).
 CHAT_CMD_TOPIC = "chat"
+
+# Topic d'état du chat (lot D0 outillage, cf. dadou_robot_ros/docs/
+# etude-declenchement-conversation.md §6.1/§6.2) — expose listening/thinking/
+# speaking/off pour la régie, le télédiagnostic et le futur engagement_node
+# (qui doit savoir si le chat écoute encore pour tenir IN_CONVERSATION).
+# Locale ici, PAS dans dadou_utils_ros : même choix que CHAT_CMD_TOPIC
+# ci-dessus (ce topic n'a de sens que côté chat, aucune raison de le
+# mutualiser dans la lib partagée).
+CHAT_STATE_TOPIC = "chat_state"
 
 
 class ChatStartupError(RuntimeError):
@@ -245,11 +263,29 @@ class ChatNode(Node):
             ANIMATION: self.create_publisher(StringTime, ANIMATION, 10),
         }
 
+        # --- Publisher d'état du chat (lot D0 outillage) -------------------
+        # QoS TRANSIENT_LOCAL : MÊME motif que l'abonnement à ANIMATION_STATE
+        # plus bas -- piège déjà vécu sur ce topic-là : sans durability
+        # partagée des DEUX côtés, un abonné qui démarre APRÈS le premier
+        # changement d'état (régie/télédiagnostic lancés après coup, ou
+        # futur engagement_node) ne recevrait jamais l'état courant avant la
+        # PROCHAINE transition -- potentiellement jamais. depth=1 : seul
+        # l'état COURANT compte, pas un historique.
+        self._chat_state_pub = self.create_publisher(
+            StringTime, CHAT_STATE_TOPIC,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+
         # --- Orchestrateur (logique déjà testée hors ROS) ------------------
         self._engine = ConversationEngine(
             mic=mic, vad=vad, stt=stt, brain=brain, tts=tts, player=player,
             publish=self._publish, beeps_pcm=beeps_pcm, beeps_rate=BEEPS_SAMPLE_RATE,
-            refresh_ms=refresh_ms,
+            refresh_ms=refresh_ms, on_state=self._publish_state,
+            # État initial émis par le MOTEUR à la construction (publisher
+            # chat_state créé juste au-dessus) : un abonné tardif trouve une
+            # valeur latchée même avant le premier tour. "listening" en dur :
+            # le mode interactif démarre TOUJOURS activé (cf. self._enabled
+            # ci-dessous, lancer le node = vouloir la conversation).
+            initial_state="listening",
         )
         self._mic = mic
         self._player = player
@@ -302,7 +338,8 @@ class ChatNode(Node):
         self.get_logger().info(
             f"chat démarré (llm_model={llm_model}, whisper_model={whisper_model}, "
             f"mic_device={mic_device}, out_device={out_device}) -> topics "
-            f"{FACE}/{ANIMATION}, toggle sur '{CHAT_CMD_TOPIC}' (on/off)"
+            f"{FACE}/{ANIMATION}, toggle sur '{CHAT_CMD_TOPIC}' (on/off), "
+            f"état publié sur '{CHAT_STATE_TOPIC}' (latché)"
         )
 
     def _on_chat_cmd(self, ros_msg):
@@ -381,6 +418,18 @@ class ChatNode(Node):
             self.get_logger().warning(f"Topic inconnu, message ignoré : {message.topic}")
             return
         publisher.publish(StringTime(**ros_message_to_string_time_kwargs(message)))
+
+    def _publish_state(self, state: str) -> None:
+        """Callback `on_state` injecté dans ConversationEngine : publie l'état
+        (listening/thinking/speaking/off) tel quel sur CHAT_STATE_TOPIC.
+        PAS d'arbitrage ici (contrairement à _publish ci-dessus) : c'est un
+        topic d'ÉTAT (ce que le chat OBSERVE de lui-même), pas un actionneur
+        qui pourrait entrer en conflit avec une séquence de spectacle -- rien
+        à retenir. msg=state BRUT (pas de json.dumps, contrairement à
+        FACE/ANIMATION) : ce topic n'a pas le même contrat que ceux
+        d'animations_node, une chaîne simple suffit à un abonné qui lit
+        `msg` directement."""
+        self._chat_state_pub.publish(StringTime(msg=state, time=0, anim=False))
 
     def destroy_node(self):
         # Arrêt propre : stop_event débloque la boucle run_forever DÈS que le
